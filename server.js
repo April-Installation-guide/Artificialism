@@ -885,3 +885,4 @@ client.login(process.env.DISCORD_TOKEN).catch(error => {
     logger.error('Error al conectar a Discord', error);
     process.exit(1);
 });
+
