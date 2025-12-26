@@ -14,7 +14,7 @@ dotenv.config();
 // ==================== CONFIGURACIÓN ====================
 const CONFIG = {
     BOT_NAME: 'Mancy',
-    BOT_VERSION: '2.0.0',
+    BOT_VERSION: '2.0.1', // Actualizada versión
     
     // Groq Configuration
     GROQ_MODEL: 'llama-3.1-70b-versatile',
@@ -389,6 +389,7 @@ class RateLimiter {
         
         // Check if user has tokens
         if (userBucket.tokens <= 0) {
+            logger.debug('Rate limit - Sin tokens', { userId, tokens: userBucket.tokens });
             return false;
         }
         
@@ -397,11 +398,19 @@ class RateLimiter {
         this.globalRequests = this.globalRequests.filter(time => time > tenSecondsAgo);
         
         if (this.globalRequests.length >= CONFIG.GLOBAL_RATE_LIMIT * 5) { // 5x multiplier for global
+            logger.debug('Rate limit - Global excedido', { 
+                userId, 
+                globalRequests: this.globalRequests.length 
+            });
             return false;
         }
         
         // Check concurrent requests
         if (this.concurrentRequests >= CONFIG.MAX_CONCURRENT_REQUESTS) {
+            logger.debug('Rate limit - Concurrencia máxima', { 
+                userId, 
+                concurrent: this.concurrentRequests 
+            });
             return false;
         }
         
@@ -420,11 +429,18 @@ class RateLimiter {
         this.globalRequests.push(Date.now());
         this.concurrentRequests++;
         
+        logger.debug('Token consumido', { 
+            userId, 
+            remainingTokens: userBucket.tokens,
+            concurrent: this.concurrentRequests 
+        });
+        
         return true;
     }
 
     releaseToken() {
         this.concurrentRequests = Math.max(0, this.concurrentRequests - 1);
+        logger.debug('Token liberado', { concurrent: this.concurrentRequests });
     }
 
     getUserWaitTime(userId) {
@@ -462,6 +478,24 @@ const groq = new Groq({
     timeout: CONFIG.GROQ_TIMEOUT,
     maxRetries: CONFIG.GROQ_MAX_RETRIES
 });
+
+// ==================== TEST DE CONEXIÓN GROQ ====================
+async function testGroqConnection() {
+    try {
+        logger.info('🧪 Probando conexión con Groq API...');
+        const test = await groq.chat.completions.create({
+            messages: [{ role: 'user', content: 'Responde con OK si funciono' }],
+            model: CONFIG.GROQ_MODEL,
+            max_tokens: 5
+        });
+        const response = test.choices[0]?.message?.content || 'Sin respuesta';
+        logger.info('✅ Conexión Groq OK', { response });
+        return true;
+    } catch (error) {
+        logger.error('❌ Conexión Groq falló', { error: error.message });
+        return false;
+    }
+}
 
 // ==================== PROMPT Y PERSONALIDAD ====================
 const SYSTEM_PROMPT = `Eres ${CONFIG.BOT_NAME}, una chica gato seria, reservada y educada con conocimiento enciclopédico y literario.
@@ -539,23 +573,23 @@ class TextUtils {
             return { valid: false, reason: 'Respuesta vacía' };
         }
         
-        const normalized = this.normalizeText(response);
+        const normalized = response.trim();
         
         // Longitud mínima
-        if (normalized.length < 3) {
+        if (normalized.length < 2) {
             return { valid: false, reason: 'Respuesta demasiado corta' };
         }
         
-        // Patrones corruptos
+        // Patrones corruptos (versión más permisiva)
         const corruptPatterns = [
-            /^[^a-zA-ZáéíóúñÁÉÍÓÚÑ0-9\s¿¡.,!?;:"'()-]+$/,
-            /([a-zA-Z])\1{5,}/,
-            /\b(n\s*){3,}\b/i,
-            /�+/
+            /�+/,
+            /[^\x00-\x7F]{10,}/, // Muchos caracteres no ASCII seguidos
+            /(.)\1{10,}/ // Carácter repetido muchas veces
         ];
         
         for (const pattern of corruptPatterns) {
             if (pattern.test(normalized)) {
+                logger.warn('Patrón corrupto detectado', { pattern: pattern.source });
                 return { valid: false, reason: 'Patrón corrupto detectado' };
             }
         }
@@ -865,6 +899,7 @@ class ConversationManager {
     clearConversation(userId) {
         this.conversations.delete(userId);
         this.userStates.delete(userId);
+        logger.info('Conversación limpiada', { userId });
     }
 }
 
@@ -887,6 +922,12 @@ class ResponseGenerator {
             { model: CONFIG.GROQ_FALLBACK_MODEL, temperature: CONFIG.GROQ_TEMPERATURE + 0.2 }
         ];
         
+        logger.debug('=== INICIANDO GENERACIÓN ===', {
+            userId,
+            messagePreview: userMessage.substring(0, 50),
+            contextLength: context?.externalInfo?.length || 0
+        });
+        
         // Verificar cache primero
         const cacheKey = responseCache.generateKey('response', `${userId}:${userMessage.substring(0, 100)}`);
         const cachedResponse = await responseCache.get(cacheKey, false); // Solo memoria
@@ -902,6 +943,11 @@ class ResponseGenerator {
             
             try {
                 this.activeRequests++;
+                logger.debug('Intentando generar respuesta', {
+                    attempt,
+                    model: currentModel.model,
+                    userId
+                });
                 
                 // Preparar historial de conversación
                 const messages = await conversationManager.prepareContext(
@@ -915,7 +961,7 @@ class ResponseGenerator {
                     content: userMessage
                 });
                 
-                logger.debug('Generando respuesta', {
+                logger.debug('Solicitando a Groq', {
                     attempt,
                     model: currentModel.model,
                     messageLength: userMessage.length,
@@ -934,7 +980,14 @@ class ResponseGenerator {
                 });
                 
                 const rawResponse = completion.choices[0]?.message?.content || '';
+                logger.debug('Respuesta cruda recibida', {
+                    attempt,
+                    length: rawResponse.length,
+                    preview: rawResponse.substring(0, 100)
+                });
+                
                 const validation = TextUtils.validateResponse(rawResponse);
+                logger.debug('Validación de respuesta', validation);
                 
                 if (validation.valid) {
                     const responseTime = Date.now() - startTime;
@@ -950,6 +1003,13 @@ class ResponseGenerator {
                         length: validation.corrected.length
                     });
                     
+                    logger.info('✅ Respuesta generada exitosamente', {
+                        attempt,
+                        model: currentModel.model,
+                        responseTime,
+                        length: validation.corrected.length
+                    });
+                    
                     return {
                         text: validation.corrected,
                         model: currentModel.model,
@@ -961,10 +1021,12 @@ class ResponseGenerator {
                     logger.warn('Respuesta inválida', {
                         attempt,
                         reason: validation.reason,
-                        model: currentModel.model
+                        model: currentModel.model,
+                        rawPreview: rawResponse.substring(0, 200)
                     });
                     
                     if (attempt === maxAttempts) {
+                        logger.warn('Todos los intentos fallaron, usando fallback');
                         return this.generateFallback(userMessage, context);
                     }
                 }
@@ -973,15 +1035,19 @@ class ResponseGenerator {
                 logger.error('Error generando respuesta', {
                     attempt,
                     model: currentModel.model,
-                    error: error.message
+                    error: error.message,
+                    stack: error.stack?.substring(0, 200)
                 });
                 
                 if (attempt === maxAttempts) {
+                    logger.error('Todos los intentos fallaron con error, usando fallback');
                     return this.generateFallback(userMessage, context);
                 }
                 
                 // Esperar antes de reintentar
-                await sleep(1000 * attempt);
+                const waitTime = 1000 * attempt;
+                logger.debug(`Esperando ${waitTime}ms antes de reintentar`);
+                await sleep(waitTime);
                 
             } finally {
                 this.activeRequests--;
@@ -993,17 +1059,22 @@ class ResponseGenerator {
     }
 
     generateFallback(userMessage, context) {
+        logger.warn('Generando respuesta de fallback', {
+            userMessagePreview: userMessage.substring(0, 50),
+            hasExternalInfo: !!context.externalInfo
+        });
+        
         const fallbacks = [
-            "Entiendo tu pregunta, pero estoy teniendo dificultades técnicas para procesarla completamente en este momento. ¿Podrías reformularla o intentar más tarde?",
-            "Mis circuitos felinos están teniendo problemas temporales. Te sugiero consultar directamente en Wikipedia u OpenLibrary para obtener información precisa.",
-            "Lamento los inconvenientes. Como chica gato seria, prefiero no dar información incompleta. ¿Podrías especificar mejor qué necesitas saber?",
-            "Disculpa, en este momento no puedo acceder a toda la información necesaria. ¿Hay algo más específico en lo que pueda ayudarte?"
+            "Hola, soy Mancy. Parece que hubo un problema técnico. Por favor, respóndeme de nuevo y haré mi mejor esfuerzo por ayudarte.",
+            "Disculpa los inconvenientes. Como chica gato seria, prefiero asegurarme de darte una respuesta adecuada. ¿Podrías repetir tu pregunta?",
+            "Mis circuitos felinos están teniendo un momento. Te sugiero intentar de nuevo con tu pregunta.",
+            "Lamento los problemas técnicos. Por favor, reformula tu pregunta y te responderé lo mejor que pueda."
         ];
         
         if (context.externalInfo) {
             const info = Array.isArray(context.externalInfo) ? context.externalInfo[0] : context.externalInfo;
             return {
-                text: `Según mis registros: "${info.title}". Sin embargo, mis sistemas están limitados ahora. La fuente es ${info.source}.`,
+                text: `Según mis registros: "${info.title}". Sin embargo, estoy teniendo dificultades técnicas. La fuente es ${info.source}.`,
                 model: 'fallback',
                 responseTime: 0,
                 attempt: 0,
@@ -1033,7 +1104,11 @@ class MessageHandler {
         // Verificar rate limiting
         if (!rateLimiter.consumeToken(userId)) {
             const waitTime = rateLimiter.getUserWaitTime(userId);
-            logger.warn('Rate limit excedido', { user: userTag, waitTime });
+            logger.warn('Rate limit excedido', { 
+                user: userTag, 
+                waitTime,
+                userId 
+            });
             
             if (waitTime > 0) {
                 try {
@@ -1042,7 +1117,7 @@ class MessageHandler {
                         allowedMentions: { repliedUser: false }
                     });
                 } catch (error) {
-                    // Ignorar errores al responder rate limits
+                    logger.error('Error respondiendo rate limit', error.message);
                 }
             }
             return;
@@ -1052,13 +1127,23 @@ class MessageHandler {
             logger.info('Procesando reply', {
                 user: userTag,
                 messageId: message.id,
-                channel: message.channel.type
+                channel: message.channel.type,
+                contentPreview: message.content.substring(0, 50)
             });
             
             // Indicar que está escribiendo
             await message.channel.sendTyping();
             
             const userMessage = TextUtils.normalizeText(message.content);
+            
+            if (!userMessage || userMessage.trim().length < 1) {
+                logger.warn('Mensaje vacío o inválido', { userId });
+                await message.reply({
+                    content: "Por favor envía un mensaje con contenido.",
+                    allowedMentions: { repliedUser: false }
+                });
+                return;
+            }
             
             // Analizar consulta
             const analysis = QueryAnalyzer.analyze(userMessage);
@@ -1067,7 +1152,12 @@ class MessageHandler {
             // Buscar información externa si es necesario
             let externalInfo = null;
             if (analysis.needsExternalInfo && analysis.searchTerm) {
+                logger.debug('Buscando información externa', { searchTerm: analysis.searchTerm });
                 externalInfo = await ExternalAPIs.searchAllSources(analysis.searchTerm);
+                logger.debug('Resultados externos', { 
+                    found: !!externalInfo, 
+                    count: externalInfo?.length || 0 
+                });
             }
             
             // Generar respuesta
@@ -1106,7 +1196,7 @@ class MessageHandler {
             });
             
             const totalTime = Date.now() - startTime;
-            logger.info('Respuesta enviada', {
+            logger.info('✅ Respuesta enviada', {
                 user: userTag,
                 time: totalTime,
                 length: response.text.length,
@@ -1123,7 +1213,7 @@ class MessageHandler {
             });
             
         } catch (error) {
-            logger.error('Error procesando mensaje', {
+            logger.error('❌ Error procesando mensaje', {
                 user: userTag,
                 error: error.message,
                 stack: error.stack?.substring(0, 200)
@@ -1154,18 +1244,91 @@ class MessageHandler {
 
     static async handleMention(message) {
         const content = message.content.toLowerCase();
+        const userId = message.author.id;
+        const userTag = `${message.author.username}#${message.author.discriminator}`;
+        
+        logger.info('Mención recibida', { user: userTag, content });
+        
+        // COMANDO DIAGNÓSTICO
+        if (/debug|diagnóstico|diagnostico|diag/i.test(content)) {
+            try {
+                const diagnostics = {
+                    groqKey: process.env.GROQ_API_KEY ? '✅ Presente' : '❌ FALTANTE',
+                    database: database.initialized ? '✅ Inicializada' : '❌ No inicializada',
+                    rateLimiter: {
+                        concurrent: rateLimiter.concurrentRequests,
+                        userBuckets: rateLimiter.userBuckets.size,
+                        canProcess: rateLimiter.canProcessUser(message.author.id),
+                        userTokens: rateLimiter.userBuckets.get(userId)?.tokens || CONFIG.GLOBAL_RATE_LIMIT
+                    },
+                    cache: responseCache.getStats(),
+                    memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
+                    conversations: conversationManager.conversations.size,
+                    yourConversation: conversationManager.getConversation(userId).length
+                };
+                
+                await message.reply({
+                    content: `🔧 **Diagnóstico de ${CONFIG.BOT_NAME}**:\n\`\`\`json\n${JSON.stringify(diagnostics, null, 2)}\n\`\`\``,
+                    allowedMentions: { repliedUser: false }
+                });
+                return;
+            } catch (error) {
+                logger.error('Error en diagnóstico', error);
+            }
+        }
+        
+        // COMANDO REPARAR
+        if (/fix|reparar|solucionar|resetear/i.test(content)) {
+            conversationManager.clearConversation(userId);
+            
+            // Limpiar cache relacionado con el usuario
+            for (const [key] of responseCache.memoryCache.entries()) {
+                if (key.includes(userId)) {
+                    responseCache.delete(key);
+                }
+            }
+            
+            await message.reply({
+                content: '🔧 Estado de conversación resetado completamente. Intenta de nuevo.',
+                allowedMentions: { repliedUser: false }
+            });
+            
+            // Forzar una respuesta simple para iniciar
+            await message.channel.sendTyping();
+            await sleep(1000);
+            
+            await message.reply({
+                content: 'Hola. He reiniciado mi estado. ¿En qué puedo ayudarte ahora? (responde a este mensaje)',
+                allowedMentions: { repliedUser: false }
+            });
+            
+            // Inicializar conversación
+            await conversationManager.addMessage(userId, 'assistant', 'Hola. He reiniciado mi estado. ¿En qué puedo ayudarte ahora?');
+            
+            logger.info('Estado resetado', { user: userTag });
+            return;
+        }
+        
+        if (/test|probar|prueba/i.test(content)) {
+            const groqOk = await testGroqConnection();
+            await message.reply({
+                content: `🧪 **Test de conexión**:\nGroq API: ${groqOk ? '✅ Conectado' : '❌ Falló'}\nDatabase: ${database.initialized ? '✅ OK' : '❌ Falló'}`,
+                allowedMentions: { repliedUser: false }
+            });
+            return;
+        }
         
         if (/help|ayuda|comandos/i.test(content)) {
             const embed = new EmbedBuilder()
                 .setColor(Colors.Blue)
-                .setTitle(`🐱 ${CONFIG.BOT_NAME} - Ayuda`)
-                .setDescription(`Versión ${CONFIG.BOT_VERSION}`)
+                .setTitle(`🐱 ${CONFIG.BOT_NAME} - Ayuda v${CONFIG.BOT_VERSION}`)
+                .setDescription('Soy una chica gato seria y reservada')
                 .addFields(
                     { name: '¿Cómo usar?', value: '1. Mencioname (@Mancy)\n2. Responde (haz reply) a mis mensajes para conversar\n3. ¡Listo!' },
                     { name: '¿Qué puedo hacer?', value: '• Responder preguntas\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Conversar sobre temas variados' },
-                    { name: 'Comandos', value: '`@Mancy help` - Esta ayuda\n`@Mancy reset` - Reiniciar conversación\n`@Mancy stats` - Ver estadísticas' }
+                    { name: 'Comandos especiales', value: '`@Mancy help` - Esta ayuda\n`@Mancy reset` - Reiniciar conversación\n`@Mancy stats` - Ver estadísticas\n`@Mancy diag` - Diagnóstico del sistema\n`@Mancy fix` - Reparar estado' }
                 )
-                .setFooter({ text: 'Soy una chica gato seria y reservada' })
+                .setFooter({ text: 'Recuerda: solo respondo a replies de mis mensajes' })
                 .setTimestamp();
             
             await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
@@ -1173,7 +1336,7 @@ class MessageHandler {
         }
         
         if (/reset|reiniciar|clear|borrar/i.test(content)) {
-            conversationManager.clearConversation(message.author.id);
+            conversationManager.clearConversation(userId);
             await message.reply({
                 content: '✅ Historial de conversación reiniciado. Puedes comenzar de nuevo mencionándome.',
                 allowedMentions: { repliedUser: false }
@@ -1185,10 +1348,11 @@ class MessageHandler {
             try {
                 const userStats = await database.db?.get(
                     'SELECT total_interactions, last_interaction FROM user_stats WHERE user_id = ?',
-                    [message.author.id]
+                    [userId]
                 );
                 
                 const cacheStats = responseCache.getStats();
+                const conversation = conversationManager.getConversation(userId);
                 
                 const embed = new EmbedBuilder()
                     .setColor(Colors.Green)
@@ -1196,16 +1360,17 @@ class MessageHandler {
                     .addFields(
                         { name: 'Tus interacciones', value: `${userStats?.total_interactions || 0} veces`, inline: true },
                         { name: 'Última interacción', value: userStats?.last_interaction ? new Date(userStats.last_interaction).toLocaleDateString() : 'Nunca', inline: true },
+                        { name: 'Mensajes en memoria', value: `${conversation.length}`, inline: true },
                         { name: 'Cache hit rate', value: `${(cacheStats.hitRate * 100).toFixed(1)}%`, inline: true },
                         { name: 'Conversaciones activas', value: `${conversationManager.conversations.size}`, inline: true },
-                        { name: 'Modelo principal', value: CONFIG.GROQ_MODEL, inline: true },
-                        { name: 'Versión', value: CONFIG.BOT_VERSION, inline: true }
+                        { name: 'Modelo principal', value: CONFIG.GROQ_MODEL, inline: true }
                     )
-                    .setFooter({ text: 'Sistema de estadísticas' })
+                    .setFooter({ text: `Versión ${CONFIG.BOT_VERSION}` })
                     .setTimestamp();
                 
                 await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
             } catch (error) {
+                logger.error('Error obteniendo estadísticas', error);
                 await message.reply({
                     content: '📊 Estadísticas no disponibles temporalmente.',
                     allowedMentions: { repliedUser: false }
@@ -1223,7 +1388,7 @@ class MessageHandler {
         });
         
         // Inicializar conversación
-        await conversationManager.addMessage(message.author.id, 'assistant', introMessage);
+        await conversationManager.addMessage(userId, 'assistant', introMessage);
         
         logger.info('Mensaje inicial enviado', { user: userTag });
     }
@@ -1232,8 +1397,13 @@ class MessageHandler {
 // ==================== EVENTOS DE DISCORD ====================
 client.once('ready', async () => {
     try {
+        logger.info(`🚀 Iniciando ${CONFIG.BOT_NAME} v${CONFIG.BOT_VERSION}...`);
+        
         // Inicializar base de datos
         await database.initialize();
+        
+        // Probar conexión Groq
+        await testGroqConnection();
         
         logger.info(`${CONFIG.BOT_NAME} ${CONFIG.BOT_VERSION} conectada`, {
             tag: client.user.tag,
@@ -1253,10 +1423,12 @@ client.once('ready', async () => {
         });
         
         // Pre-cachear términos comunes
-        await this.preCacheCommonTerms();
+        await preCacheCommonTerms();
+        
+        logger.info('✅ Inicialización completada exitosamente');
         
     } catch (error) {
-        logger.error('Error en ready event', error);
+        logger.error('❌ Error en ready event', error);
     }
 });
 
@@ -1269,6 +1441,11 @@ client.on('messageCreate', async (message) => {
         if (message.reference) {
             const repliedMessage = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
             if (repliedMessage && repliedMessage.author.id === client.user.id) {
+                logger.debug('Reply detectado', { 
+                    messageId: message.id,
+                    repliedTo: repliedMessage.id,
+                    author: message.author.username
+                });
                 await MessageHandler.handleReply(message);
                 return;
             }
@@ -1276,6 +1453,11 @@ client.on('messageCreate', async (message) => {
         
         // Verificar mención directa
         if (message.mentions.has(client.user) && !message.mentions.everyone) {
+            logger.debug('Mención detectada', { 
+                messageId: message.id,
+                author: message.author.username,
+                contentPreview: message.content.substring(0, 30)
+            });
             await MessageHandler.handleMention(message);
         }
         
@@ -1334,6 +1516,7 @@ async function setupPeriodicTasks() {
         
         logger.metric('conversation_count', conversationManager.conversations.size);
         logger.metric('cache_size', responseCache.stats.size);
+        logger.metric('rate_limiter_concurrent', rateLimiter.concurrentRequests);
         
     }, CONFIG.HEALTH_CHECK_INTERVAL_MS);
 }
@@ -1390,7 +1573,8 @@ async function initialize() {
         fallbackModel: CONFIG.GROQ_FALLBACK_MODEL,
         maxTokens: CONFIG.GROQ_MAX_TOKENS,
         temperature: CONFIG.GROQ_TEMPERATURE,
-        dbPath: CONFIG.DB_PATH
+        dbPath: CONFIG.DB_PATH,
+        logLevel: CONFIG.LOG_LEVEL
     });
     
     try {
@@ -1400,10 +1584,10 @@ async function initialize() {
         // Conectar a Discord
         await client.login(process.env.DISCORD_TOKEN);
         
-        logger.info('Inicialización completada exitosamente');
+        logger.info('✅ Inicialización completada exitosamente');
         
     } catch (error) {
-        logger.error('Error durante la inicialización', error);
+        logger.error('❌ Error durante la inicialización', error);
         process.exit(1);
     }
 }
