@@ -14,11 +14,11 @@ dotenv.config();
 // ==================== CONFIGURACIÓN ====================
 const CONFIG = {
     BOT_NAME: 'Mancy',
-    BOT_VERSION: '2.0.1', // Actualizada versión
+    BOT_VERSION: '2.0.1',
     
     // Groq Configuration
-    GROQ_MODEL: 'llama-3.1-8b-instant', // CAMBIADO AQUÍ
-    GROQ_FALLBACK_MODEL: 'llama-3.1-70b-versatile', // CAMBIADO: ahora el 70b es el fallback
+    GROQ_MODEL: 'llama-3.1-8b-instant',
+    GROQ_FALLBACK_MODEL: 'llama-3.1-70b-versatile',
     GROQ_MAX_TOKENS: 400,
     GROQ_TEMPERATURE: 0.25,
     GROQ_TIMEOUT: 45000,
@@ -26,7 +26,7 @@ const CONFIG = {
     
     // Rate Limiting
     USER_COOLDOWN_MS: 2000,
-    GLOBAL_RATE_LIMIT: 5, // requests per 10 seconds
+    GLOBAL_RATE_LIMIT: 5,
     MAX_CONCURRENT_REQUESTS: 3,
     
     // Conversation
@@ -35,17 +35,17 @@ const CONFIG = {
     CONTEXT_SUMMARY_THRESHOLD: 8,
     
     // Caching
-    SEARCH_CACHE_TTL: 900000, // 15 minutes
-    RESPONSE_CACHE_TTL: 300000, // 5 minutes
-    EMBEDDING_CACHE_TTL: 86400000, // 24 hours
+    SEARCH_CACHE_TTL: 900000,
+    RESPONSE_CACHE_TTL: 300000,
+    EMBEDDING_CACHE_TTL: 86400000,
     
     // API Timeouts
     WIKIPEDIA_TIMEOUT: 8000,
     OPENLIBRARY_TIMEOUT: 10000,
     
     // System
-    CLEANUP_INTERVAL_MS: 300000, // 5 minutes
-    HEALTH_CHECK_INTERVAL_MS: 60000, // 1 minute
+    CLEANUP_INTERVAL_MS: 300000,
+    HEALTH_CHECK_INTERVAL_MS: 60000,
     MAX_CONVERSATIONS_IN_MEMORY: 500,
     
     // Database
@@ -103,7 +103,6 @@ class Logger {
     debug(message, data) { this._log('debug', '🔍', message, data); }
     trace(message, data) { this._log('trace', '📝', message, data); }
     
-    // Métricas específicas
     metric(name, value, tags = {}) {
         if (CONFIG.ENABLE_METRICS) {
             this.info(`METRIC ${name}=${value}`, tags);
@@ -122,7 +121,6 @@ class Database {
 
     async initialize() {
         try {
-            // Crear directorio de datos si no existe
             if (!existsSync('./data')) {
                 mkdirSync('./data', { recursive: true });
             }
@@ -199,7 +197,6 @@ class Database {
                 ]
             );
 
-            // Actualizar estadísticas del usuario
             await this.db.run(
                 `INSERT OR REPLACE INTO user_stats (user_id, total_interactions, last_interaction) 
                 VALUES (?, COALESCE((SELECT total_interactions + 1 FROM user_stats WHERE user_id = ?), 1), CURRENT_TIMESTAMP)`,
@@ -294,18 +291,15 @@ class EnhancedCache {
     }
 
     async get(key, useDatabase = true) {
-        // Primero buscar en memoria
         const memoryItem = this.memoryCache.get(key);
         if (memoryItem && Date.now() < memoryItem.expiry) {
             this.stats.hits++;
             return memoryItem.data;
         }
         
-        // Si no está en memoria y se permite DB, buscar allí
         if (useDatabase) {
             const dbData = await database.getCache(key);
             if (dbData) {
-                // Almacenar en memoria para acceso rápido
                 this.memoryCache.set(key, {
                     data: dbData,
                     expiry: Date.now() + CONFIG.RESPONSE_CACHE_TTL
@@ -378,26 +372,23 @@ class RateLimiter {
         const now = Date.now();
         const userBucket = this.userBuckets.get(userId) || { tokens: CONFIG.GLOBAL_RATE_LIMIT, lastRefill: now };
         
-        // Refill tokens
         const timePassed = now - userBucket.lastRefill;
-        const refillAmount = Math.floor(timePassed / 10000) * CONFIG.GLOBAL_RATE_LIMIT; // Refill every 10 seconds
+        const refillAmount = Math.floor(timePassed / 10000) * CONFIG.GLOBAL_RATE_LIMIT;
         
         if (refillAmount > 0) {
             userBucket.tokens = Math.min(userBucket.tokens + refillAmount, CONFIG.GLOBAL_RATE_LIMIT);
             userBucket.lastRefill = now;
         }
         
-        // Check if user has tokens
         if (userBucket.tokens <= 0) {
             logger.debug('Rate limit - Sin tokens', { userId, tokens: userBucket.tokens });
             return false;
         }
         
-        // Check global rate limit
         const tenSecondsAgo = now - 10000;
         this.globalRequests = this.globalRequests.filter(time => time > tenSecondsAgo);
         
-        if (this.globalRequests.length >= CONFIG.GLOBAL_RATE_LIMIT * 5) { // 5x multiplier for global
+        if (this.globalRequests.length >= CONFIG.GLOBAL_RATE_LIMIT * 5) {
             logger.debug('Rate limit - Global excedido', { 
                 userId, 
                 globalRequests: this.globalRequests.length 
@@ -405,7 +396,6 @@ class RateLimiter {
             return false;
         }
         
-        // Check concurrent requests
         if (this.concurrentRequests >= CONFIG.MAX_CONCURRENT_REQUESTS) {
             logger.debug('Rate limit - Concurrencia máxima', { 
                 userId, 
@@ -448,7 +438,7 @@ class RateLimiter {
         if (!userBucket || userBucket.tokens > 0) return 0;
         
         const timeSinceRefill = Date.now() - userBucket.lastRefill;
-        return Math.max(0, 10000 - timeSinceRefill); // Time until next refill
+        return Math.max(0, 10000 - timeSinceRefill);
     }
 }
 
@@ -537,13 +527,10 @@ class TextUtils {
     static normalizeText(text) {
         if (!text) return '';
         
-        // Convertir a string
         text = String(text);
         
-        // Eliminar caracteres de control
         text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
         
-        // Corregir encoding común
         const encodingMap = {
             'Ã¡': 'á', 'Ã©': 'é', 'Ã­': 'í', 'Ã³': 'ó', 'Ãº': 'ú', 'Ã±': 'ñ',
             'Ã': 'Á', 'Ã': 'É', 'Ã': 'Í', 'Ã': 'Ó', 'Ã': 'Ú', 'Ã': 'Ñ',
@@ -558,10 +545,8 @@ class TextUtils {
             text = text.replace(regex, encodingMap[pattern]);
         });
         
-        // Eliminar caracteres Unicode problemáticos
         text = text.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069]/g, '');
         
-        // Normalizar espacios y puntuación
         text = text.replace(/\s+/g, ' ').trim();
         text = text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
         
@@ -575,16 +560,14 @@ class TextUtils {
         
         const normalized = response.trim();
         
-        // Longitud mínima
         if (normalized.length < 2) {
             return { valid: false, reason: 'Respuesta demasiado corta' };
         }
         
-        // Patrones corruptos (versión más permisiva)
         const corruptPatterns = [
             /�+/,
-            /[^\x00-\x7F]{10,}/, // Muchos caracteres no ASCII seguidos
-            /(.)\1{10,}/ // Carácter repetido muchas veces
+            /[^\x00-\x7F]{10,}/,
+            /(.)\1{10,}/
         ];
         
         for (const pattern of corruptPatterns) {
@@ -594,7 +577,6 @@ class TextUtils {
             }
         }
         
-        // Corrección básica
         let corrected = normalized;
         if (!/^[A-ZÁÉÍÓÚÑ¿¡]/.test(corrected)) {
             corrected = corrected.charAt(0).toUpperCase() + corrected.slice(1);
@@ -637,7 +619,6 @@ class TextUtils {
         
         searchTerm = searchTerm.replace(/[.,!?;:¿¡]/g, '').trim();
         
-        // Extraer palabras significativas
         const words = searchTerm.split(/\s+/).filter(word => 
             word.length > 2 && !/^(el|la|los|las|un|una|de|en|y|o|pero|mas)$/i.test(word)
         );
@@ -759,7 +740,6 @@ class ExternalAPIs {
     static async searchAllSources(query) {
         const results = [];
         
-        // Buscar en paralelo
         const promises = [
             this.searchWikipedia(query),
             this.searchOpenLibrary(query, 'title', 2),
@@ -846,15 +826,15 @@ class ConversationManager {
         const message = {
             role,
             content: TextUtils.normalizeText(content),
-            timestamp: Date.now(),
             ...metadata
         };
         
+        // Usar guion bajo para propiedades internas
+        message._timestamp = Date.now();
+        
         conversation.push(message);
         
-        // Limitar tamaño
         if (conversation.length > CONFIG.MAX_HISTORY_MESSAGES * 2) {
-            // Mantener el system prompt y los últimos mensajes
             const systemMessage = conversation[0];
             const recentMessages = conversation.slice(-(CONFIG.MAX_HISTORY_MESSAGES * 2 - 1));
             conversation.length = 0;
@@ -867,15 +847,12 @@ class ConversationManager {
     async prepareContext(userId, externalInfo = null) {
         const conversation = this.getConversation(userId);
         
-        // Obtener historial de DB para contexto adicional
         const dbHistory = await database.getRecentConversations(userId, 3);
         const contextSummary = TextUtils.summarizeContext(dbHistory);
         
-        // Preparar system prompt con contexto
         let systemPrompt = SYSTEM_PROMPT
             .replace('{CONTEXT_SUMMARY}', contextSummary || 'No hay historial previo.');
         
-        // Agregar información externa si existe
         if (externalInfo) {
             const infoText = Array.isArray(externalInfo) 
                 ? externalInfo.map(info => 
@@ -888,7 +865,6 @@ class ConversationManager {
             systemPrompt = systemPrompt.replace('{EXTERNAL_INFO}', 'No hay información externa disponible.');
         }
         
-        // Actualizar system prompt si es diferente
         if (conversation.length === 0 || conversation[0].content !== systemPrompt) {
             conversation[0] = { role: 'system', content: systemPrompt };
         }
@@ -911,6 +887,17 @@ class ResponseGenerator {
         this.activeRequests = 0;
     }
 
+    cleanMessagesForAPI(messages) {
+        return messages.map(msg => {
+            // Solo incluir propiedades soportadas por Groq API
+            const cleanMsg = {
+                role: msg.role,
+                content: msg.content
+            };
+            return cleanMsg;
+        });
+    }
+
     async generate(userId, userMessage, context = {}) {
         const startTime = Date.now();
         let attempt = 0;
@@ -928,9 +915,8 @@ class ResponseGenerator {
             contextLength: context?.externalInfo?.length || 0
         });
         
-        // Verificar cache primero
         const cacheKey = responseCache.generateKey('response', `${userId}:${userMessage.substring(0, 100)}`);
-        const cachedResponse = await responseCache.get(cacheKey, false); // Solo memoria
+        const cachedResponse = await responseCache.get(cacheKey, false);
         
         if (cachedResponse) {
             logger.info('Respuesta desde cache', { userId, cacheHit: true });
@@ -949,27 +935,28 @@ class ResponseGenerator {
                     userId
                 });
                 
-                // Preparar historial de conversación
                 const messages = await conversationManager.prepareContext(
                     userId, 
                     context.externalInfo
                 );
                 
-                // Agregar mensaje actual del usuario
                 messages.push({
                     role: 'user',
                     content: userMessage
                 });
                 
+                // LIMPIAR MENSAJES PARA API
+                const cleanedMessages = this.cleanMessagesForAPI(messages);
+                
                 logger.debug('Solicitando a Groq', {
                     attempt,
                     model: currentModel.model,
                     messageLength: userMessage.length,
-                    contextLength: messages.length
+                    contextLength: cleanedMessages.length
                 });
                 
                 const completion = await groq.chat.completions.create({
-                    messages: messages,
+                    messages: cleanedMessages,
                     model: currentModel.model,
                     temperature: currentModel.temperature,
                     max_tokens: CONFIG.GROQ_MAX_TOKENS,
@@ -992,10 +979,8 @@ class ResponseGenerator {
                 if (validation.valid) {
                     const responseTime = Date.now() - startTime;
                     
-                    // Guardar en cache
                     await responseCache.set(cacheKey, validation.corrected, CONFIG.RESPONSE_CACHE_TTL);
                     
-                    // Registrar métrica
                     logger.metric('response_generated', responseTime, {
                         attempt,
                         model: currentModel.model,
@@ -1032,7 +1017,7 @@ class ResponseGenerator {
                 }
                 
             } catch (error) {
-                logger.error('Error generando respuesta', {
+                logger.error('❌ Error generando respuesta', {
                     attempt,
                     model: currentModel.model,
                     error: error.message,
@@ -1044,7 +1029,6 @@ class ResponseGenerator {
                     return this.generateFallback(userMessage, context);
                 }
                 
-                // Esperar antes de reintentar
                 const waitTime = 1000 * attempt;
                 logger.debug(`Esperando ${waitTime}ms antes de reintentar`);
                 await sleep(waitTime);
@@ -1101,7 +1085,6 @@ class MessageHandler {
         const userTag = `${message.author.username}#${message.author.discriminator}`;
         const startTime = Date.now();
         
-        // Verificar rate limiting
         if (!rateLimiter.consumeToken(userId)) {
             const waitTime = rateLimiter.getUserWaitTime(userId);
             logger.warn('Rate limit excedido', { 
@@ -1131,7 +1114,6 @@ class MessageHandler {
                 contentPreview: message.content.substring(0, 50)
             });
             
-            // Indicar que está escribiendo
             await message.channel.sendTyping();
             
             const userMessage = TextUtils.normalizeText(message.content);
@@ -1145,11 +1127,9 @@ class MessageHandler {
                 return;
             }
             
-            // Analizar consulta
             const analysis = QueryAnalyzer.analyze(userMessage);
             logger.debug('Análisis de consulta', analysis);
             
-            // Buscar información externa si es necesario
             let externalInfo = null;
             if (analysis.needsExternalInfo && analysis.searchTerm) {
                 logger.debug('Buscando información externa', { searchTerm: analysis.searchTerm });
@@ -1160,7 +1140,6 @@ class MessageHandler {
                 });
             }
             
-            // Generar respuesta
             const response = await responseGenerator.generate(
                 userId,
                 userMessage,
@@ -1170,14 +1149,12 @@ class MessageHandler {
                 }
             );
             
-            // Agregar mensaje al historial
             await conversationManager.addMessage(userId, 'user', userMessage);
             await conversationManager.addMessage(userId, 'assistant', response.text, {
                 model: response.model,
                 responseTime: response.responseTime
             });
             
-            // Guardar en base de datos
             await database.saveConversation({
                 userId,
                 guildId: message.guild?.id,
@@ -1189,7 +1166,6 @@ class MessageHandler {
                 hasExternalInfo: !!externalInfo
             });
             
-            // Enviar respuesta
             await message.reply({
                 content: response.text,
                 allowedMentions: { repliedUser: false }
@@ -1205,7 +1181,6 @@ class MessageHandler {
                 hasExternalInfo: !!externalInfo
             });
             
-            // Registrar métrica
             logger.metric('message_processed', totalTime, {
                 userId,
                 success: true,
@@ -1219,7 +1194,6 @@ class MessageHandler {
                 stack: error.stack?.substring(0, 200)
             });
             
-            // Limpiar estado problemático
             conversationManager.clearConversation(userId);
             
             try {
@@ -1231,7 +1205,6 @@ class MessageHandler {
                 logger.error('Error enviando mensaje de error', replyError.message);
             }
             
-            // Registrar métrica de error
             logger.metric('message_error', Date.now() - startTime, {
                 userId,
                 errorType: error.constructor.name
@@ -1249,7 +1222,6 @@ class MessageHandler {
         
         logger.info('Mención recibida', { user: userTag, content });
         
-        // COMANDO DIAGNÓSTICO
         if (/debug|diagnóstico|diagnostico|diag/i.test(content)) {
             try {
                 const diagnostics = {
@@ -1277,11 +1249,9 @@ class MessageHandler {
             }
         }
         
-        // COMANDO REPARAR
         if (/fix|reparar|solucionar|resetear/i.test(content)) {
             conversationManager.clearConversation(userId);
             
-            // Limpiar cache relacionado con el usuario
             for (const [key] of responseCache.memoryCache.entries()) {
                 if (key.includes(userId)) {
                     responseCache.delete(key);
@@ -1293,7 +1263,6 @@ class MessageHandler {
                 allowedMentions: { repliedUser: false }
             });
             
-            // Forzar una respuesta simple para iniciar
             await message.channel.sendTyping();
             await sleep(1000);
             
@@ -1302,7 +1271,6 @@ class MessageHandler {
                 allowedMentions: { repliedUser: false }
             });
             
-            // Inicializar conversación
             await conversationManager.addMessage(userId, 'assistant', 'Hola. He reiniciado mi estado. ¿En qué puedo ayudarte ahora?');
             
             logger.info('Estado resetado', { user: userTag });
@@ -1379,7 +1347,6 @@ class MessageHandler {
             return;
         }
         
-        // Mención inicial - enviar mensaje introductorio
         const introMessage = `Hola ${message.author.username}. Soy ${CONFIG.BOT_NAME}, una chica gato seria. **Responde a este mensaje** (haz reply) para conversar conmigo o preguntarme algo.`;
         
         const sentMessage = await message.reply({
@@ -1387,7 +1354,6 @@ class MessageHandler {
             allowedMentions: { repliedUser: false }
         });
         
-        // Inicializar conversación
         await conversationManager.addMessage(userId, 'assistant', introMessage);
         
         logger.info('Mensaje inicial enviado', { user: userTag });
@@ -1399,10 +1365,8 @@ client.once('ready', async () => {
     try {
         logger.info(`🚀 Iniciando ${CONFIG.BOT_NAME} v${CONFIG.BOT_VERSION}...`);
         
-        // Inicializar base de datos
         await database.initialize();
         
-        // Probar conexión Groq
         await testGroqConnection();
         
         logger.info(`${CONFIG.BOT_NAME} ${CONFIG.BOT_VERSION} conectada`, {
@@ -1413,7 +1377,6 @@ client.once('ready', async () => {
             readyAt: new Date().toISOString()
         });
         
-        // Configurar presencia
         client.user.setPresence({
             activities: [{
                 name: 'solo responde a replies',
@@ -1422,7 +1385,6 @@ client.once('ready', async () => {
             status: 'online'
         });
         
-        // Pre-cachear términos comunes
         await preCacheCommonTerms();
         
         logger.info('✅ Inicialización completada exitosamente');
@@ -1437,7 +1399,6 @@ client.on('messageCreate', async (message) => {
     if (message.author.id === client.user.id) return;
     
     try {
-        // Verificar si es reply a Mancy
         if (message.reference) {
             const repliedMessage = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
             if (repliedMessage && repliedMessage.author.id === client.user.id) {
@@ -1451,7 +1412,6 @@ client.on('messageCreate', async (message) => {
             }
         }
         
-        // Verificar mención directa
         if (message.mentions.has(client.user) && !message.mentions.everyone) {
             logger.debug('Mención detectada', { 
                 messageId: message.id,
@@ -1472,27 +1432,22 @@ client.on('messageCreate', async (message) => {
 
 // ==================== TAREAS PERIÓDICAS ====================
 async function setupPeriodicTasks() {
-    // Limpieza periódica
     setInterval(() => {
-        // Limpiar cache en memoria
         searchCache.cleanup();
         responseCache.cleanup();
         
-        // Limpiar cache en base de datos
         database.cleanupExpiredCache();
         
-        // Limpiar conversaciones antiguas en memoria
         const now = Date.now();
-        const maxAge = 3600000; // 1 hora
+        const maxAge = 3600000;
         
         for (const [userId, conversation] of conversationManager.conversations.entries()) {
             const lastMessage = conversation[conversation.length - 1];
-            if (lastMessage && (now - lastMessage.timestamp) > maxAge) {
+            if (lastMessage && (now - lastMessage._timestamp) > maxAge) {
                 conversationManager.conversations.delete(userId);
             }
         }
         
-        // Limitar tamaño máximo
         if (conversationManager.conversations.size > CONFIG.MAX_CONVERSATIONS_IN_MEMORY) {
             const entries = Array.from(conversationManager.conversations.entries());
             const toRemove = entries.slice(0, entries.length - CONFIG.MAX_CONVERSATIONS_IN_MEMORY);
@@ -1506,7 +1461,6 @@ async function setupPeriodicTasks() {
         
     }, CONFIG.CLEANUP_INTERVAL_MS);
     
-    // Health check
     setInterval(() => {
         const memoryUsage = process.memoryUsage();
         logger.metric('memory_usage', Math.round(memoryUsage.heapUsed / 1024 / 1024), {
@@ -1534,7 +1488,7 @@ async function preCacheCommonTerms() {
     for (const term of commonTerms) {
         try {
             await ExternalAPIs.searchWikipedia(term);
-            await sleep(100); // Pequeña pausa para no sobrecargar
+            await sleep(100);
         } catch (error) {
             // Ignorar errores en pre-cache
         }
@@ -1558,7 +1512,6 @@ process.on('uncaughtException', (error) => {
         stack: error.stack 
     });
     
-    // Intentar reiniciar después de 10 segundos
     setTimeout(() => {
         logger.info('Reiniciando después de excepción no capturada');
         process.exit(1);
@@ -1578,10 +1531,8 @@ async function initialize() {
     });
     
     try {
-        // Iniciar tareas periódicas
         setupPeriodicTasks();
         
-        // Conectar a Discord
         await client.login(process.env.DISCORD_TOKEN);
         
         logger.info('✅ Inicialización completada exitosamente');
