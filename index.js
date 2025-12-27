@@ -17,8 +17,8 @@ const CONFIG = {
     BOT_VERSION: '2.0.1', // Actualizada versión
     
     // Groq Configuration
-    GROQ_MODEL: 'llama-3.1-70b-versatile',
-    GROQ_FALLBACK_MODEL: 'mixtral-8x7b-32768',
+    GROQ_MODEL: 'llama-3.1-8b-instant', // CAMBIADO AQUÍ
+    GROQ_FALLBACK_MODEL: 'llama-3.1-70b-versatile', // CAMBIADO: ahora el 70b es el fallback
     GROQ_MAX_TOKENS: 400,
     GROQ_TEMPERATURE: 0.25,
     GROQ_TIMEOUT: 45000,
