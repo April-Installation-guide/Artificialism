@@ -2,13 +2,13 @@
   "name": "mancy-bot-control",
   "version": "2.0.0",
   "description": "Discord AI bot with web control panel",
-  "main": "server.js",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
     "bot-only": "node bot-only.js",
-    "web-only": "node web-server.js",
+    "web-only": "node web-index.js",
     "setup": "node setup.js",
     "backup": "node backup.js",
     "clean": "rm -rf node_modules && npm cache clean --force",
@@ -91,9 +91,9 @@
     "utf-8-validate": "^5.0.10"
   },
   "files": [
-    "server.js",
+    "index.js",
     "bot-only.js",
-    "web-server.js",
+    "web-index.js",
     "public/",
     "data/",
     "logs/",
@@ -127,3 +127,4 @@
     "arm64"
   ]
 }
+
