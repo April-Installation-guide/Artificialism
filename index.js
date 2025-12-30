@@ -14,13 +14,14 @@ dotenv.config();
 // ==================== CONFIGURACIÓN ====================
 const CONFIG = {
     BOT_NAME: 'Mancy',
-    BOT_VERSION: '2.0.1',
+    BOT_VERSION: '2.0.3',
+    BOT_TITLE: 'Chica Gato Seria con Conocimiento Psicológico y Filosófico',
     
     // Groq Configuration
     GROQ_MODEL: 'llama-3.1-8b-instant',
     GROQ_FALLBACK_MODEL: 'llama-3.1-70b-versatile',
-    GROQ_MAX_TOKENS: 400,
-    GROQ_TEMPERATURE: 0.25,
+    GROQ_MAX_TOKENS: 500,
+    GROQ_TEMPERATURE: 0.3,
     GROQ_TIMEOUT: 45000,
     GROQ_MAX_RETRIES: 3,
     
@@ -30,8 +31,8 @@ const CONFIG = {
     MAX_CONCURRENT_REQUESTS: 3,
     
     // Conversation
-    MAX_HISTORY_MESSAGES: 6,
-    MAX_CONTEXT_TOKENS: 2000,
+    MAX_HISTORY_MESSAGES: 8,
+    MAX_CONTEXT_TOKENS: 2500,
     CONTEXT_SUMMARY_THRESHOLD: 8,
     
     // Caching
@@ -50,6 +51,10 @@ const CONFIG = {
     
     // Database
     DB_PATH: './data/mancy.db',
+    
+    // Knowledge Modules
+    PSYCHOLOGY_MODULE_ENABLED: true,
+    PHILOSOPHY_MODULE_ENABLED: true,
     
     // Monitoring
     ENABLE_METRICS: true,
@@ -112,583 +117,1473 @@ class Logger {
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
-// ==================== MÓDULOS DE DECISIÓN INTEGRADOS ====================
+// ==================== MÓDULO DE PSICOLOGÍA INTEGRADO ====================
 
-// 1. CONFIDENCE SCORER
-class ConfidenceScorer {
+class PsychologyModule {
     constructor() {
-        this.weights = {
-            questionClarity: 0.25,
-            informationAvailability: 0.30,
-            contextRelevance: 0.20,
-            historicalAccuracy: 0.15,
-            responseQuality: 0.10
+        this.moduleName = 'PsychologyChamber';
+        this.moduleVersion = '1.0.0';
+        this.analysisLog = [];
+        
+        // Base de conocimiento psicológico
+        this.psychologicalKnowledge = {
+            schoolsOfThought: {
+                'psicoanálisis': {
+                    keyFigures: ['Sigmund Freud', 'Carl Jung', 'Melanie Klein', 'Jacques Lacan'],
+                    keyConcepts: ['inconsciente', 'complejo', 'defensa', 'transferencia', 'sueños'],
+                    description: 'Enfoque que estudia el inconsciente y sus manifestaciones.'
+                },
+                'conductismo': {
+                    keyFigures: ['John B. Watson', 'B.F. Skinner', 'Ivan Pavlov'],
+                    keyConcepts: ['condicionamiento', 'refuerzo', 'estímulo-respuesta', 'modificación conductual'],
+                    description: 'Estudio del comportamiento observable y sus relaciones con el ambiente.'
+                },
+                'humanismo': {
+                    keyFigures: ['Carl Rogers', 'Abraham Maslow', 'Viktor Frankl'],
+                    keyConcepts: ['autorrealización', 'jerarquía de necesidades', 'centrado en la persona', 'existencialismo'],
+                    description: 'Enfoque en el potencial humano y la experiencia subjetiva.'
+                },
+                'cognitiva': {
+                    keyFigures: ['Aaron Beck', 'Albert Ellis', 'Jean Piaget', 'Ulric Neisser'],
+                    keyConcepts: ['esquemas', 'procesamiento información', 'distorsiones cognitivas', 'metacognición'],
+                    description: 'Estudio de procesos mentales como pensamiento, memoria y percepción.'
+                },
+                'gestalt': {
+                    keyFigures: ['Max Wertheimer', 'Kurt Koffka', 'Wolfgang Köhler', 'Fritz Perls'],
+                    keyConcepts: ['figura-fondo', 'cierre', 'proximidad', 'aquí y ahora'],
+                    description: 'Enfoque holístico que estudia la percepción y la experiencia total.'
+                }
+            },
+
+            psychologicalConcepts: {
+                'ansiedad': {
+                    types: ['ansiedad generalizada', 'ansiedad social', 'trastorno de pánico', 'agorafobia'],
+                    symptoms: ['preocupación excesiva', 'tensión muscular', 'inquietud', 'fatiga'],
+                    approaches: ['terapia cognitivo-conductual', 'mindfulness', 'exposición gradual']
+                },
+                'depresión': {
+                    types: ['depresión mayor', 'distimia', 'depresión estacional', 'depresión postparto'],
+                    symptoms: ['tristeza persistente', 'pérdida interés', 'cambios apetito', 'insomnio'],
+                    approaches: ['terapia interpersonal', 'activación conductual', 'terapia cognitiva']
+                },
+                'estrés': {
+                    types: ['estrés agudo', 'estrés crónico', 'estrés postraumático'],
+                    symptoms: ['irritabilidad', 'dificultad concentración', 'dolores cabeza', 'problemas sueño'],
+                    management: ['técnicas relajación', 'gestión tiempo', 'ejercicio físico', 'apoyo social']
+                },
+                'autoestima': {
+                    components: ['autoaceptación', 'autoeficacia', 'autorespeto'],
+                    factors: ['experiencias tempranas', 'comparación social', 'logros personales'],
+                    improvement: ['autocompasión', 'metas realistas', 'reconocimiento logros']
+                }
+            },
+
+            therapeuticApproaches: {
+                'TCC': {
+                    fullName: 'Terapia Cognitivo-Conductual',
+                    founder: 'Aaron Beck',
+                    techniques: ['reestructuración cognitiva', 'exposición', 'técnicas relajación'],
+                    applications: ['ansiedad', 'depresión', 'TOC', 'fobias']
+                },
+                'ACT': {
+                    fullName: 'Terapia de Aceptación y Compromiso',
+                    founder: 'Steven Hayes',
+                    techniques: ['defusión cognitiva', 'aceptación', 'valores', 'acción comprometida'],
+                    applications: ['ansiedad', 'depresión', 'dolor crónico']
+                },
+                'DBT': {
+                    fullName: 'Terapia Dialéctica Conductual',
+                    founder: 'Marsha Linehan',
+                    techniques: ['mindfulness', 'tolerancia malestar', 'regulación emocional', 'eficacia interpersonal'],
+                    applications: ['trastorno límite personalidad', 'conductas autolesivas']
+                }
+            },
+
+            psychologists: {
+                'freud': {
+                    name: 'Sigmund Freud',
+                    contribution: 'Fundador del psicoanálisis',
+                    concepts: ['inconsciente', 'psicoanálisis', 'interpretación sueños', 'estructura psíquica'],
+                    works: ['La interpretación de los sueños', 'El malestar en la cultura', 'Tótem y tabú']
+                },
+                'jung': {
+                    name: 'Carl Gustav Jung',
+                    contribution: 'Psicología analítica',
+                    concepts: ['inconsciente colectivo', 'arquetipos', 'sincronicidad', 'individuación'],
+                    works: ['Tipos psicológicos', 'El hombre y sus símbolos', 'Recuerdos, sueños, pensamientos']
+                },
+                'rogers': {
+                    name: 'Carl Rogers',
+                    contribution: 'Terapia centrada en la persona',
+                    concepts: ['congruencia', 'empatía', 'consideración positiva incondicional', 'tendencia actualizante'],
+                    works: ['El proceso de convertirse en persona', 'Terapia centrada en el cliente']
+                },
+                'maslow': {
+                    name: 'Abraham Maslow',
+                    contribution: 'Jerarquía de necesidades',
+                    concepts: ['autorrealización', 'necesidades básicas', 'experiencias cumbre', 'psicología humanista'],
+                    works: ['Motivación y personalidad', 'Hacia una psicología del ser']
+                }
+            }
         };
     }
 
-    calculateConfidence(queryAnalysis, externalInfo, context) {
-        const scores = {};
+    async analyzeQuestion(question, context = {}) {
+        const analysisStart = Date.now();
         
-        scores.questionClarity = this.scoreQuestionClarity(queryAnalysis.original);
-        scores.informationAvailability = this.scoreInformationAvailability(externalInfo, queryAnalysis);
-        scores.contextRelevance = this.scoreContextRelevance(context, queryAnalysis);
-        scores.historicalAccuracy = this.scoreHistoricalAccuracy(context?.history);
-        scores.responseQuality = this.scoreResponseQuality(queryAnalysis, externalInfo);
+        try {
+            // Detectar temas psicológicos
+            const detectedTopics = this.detectPsychologicalTopics(question);
+            
+            // Evaluar severidad
+            const severity = this.assessPsychologicalSeverity(question);
+            
+            // Verificar si necesita referencia profesional
+            const needsProfessional = this.checkProfessionalReferralNeeded(question);
+            
+            // Identificar enfoques teóricos relevantes
+            const relevantApproaches = this.identifyRelevantApproaches(question, detectedTopics);
+            
+            // Generar insights psicológicos
+            const psychologicalInsights = this.generatePsychologicalInsights(question, detectedTopics, context);
+            
+            const analysisResult = {
+                module: this.moduleName,
+                timestamp: new Date().toISOString(),
+                processingTime: Date.now() - analysisStart,
+                
+                // Resultados del análisis
+                isPsychological: detectedTopics.length > 0,
+                detectedTopics,
+                severityLevel: severity,
+                needsProfessionalHelp: needsProfessional,
+                relevantPsychologicalApproaches: relevantApproaches,
+                
+                // Insights generados
+                insights: psychologicalInsights,
+                
+                // Recomendaciones específicas
+                recommendations: this.generatePsychologyRecommendations(detectedTopics, severity, needsProfessional),
+                
+                // Advertencias
+                warnings: this.generatePsychologyWarnings(question, severity),
+                
+                // Contexto adicional
+                analysisContext: {
+                    userHistory: context.userHistory || 'unknown',
+                    questionComplexity: this.assessQuestionComplexity(question),
+                    emotionalTone: this.analyzeEmotionalTone(question)
+                }
+            };
+            
+            // Guardar en registro
+            this.logAnalysis(analysisResult);
+            
+            return analysisResult;
+            
+        } catch (error) {
+            logger.error('Error en análisis psicológico', { error: error.message });
+            
+            return {
+                module: this.moduleName,
+                error: true,
+                message: 'Error en análisis psicológico',
+                fallbackAnalysis: this.fallbackPsychologicalAnalysis(question)
+            };
+        }
+    }
+
+    detectPsychologicalTopics(question) {
+        const normalized = question.toLowerCase();
+        const topics = [];
         
-        let totalScore = 0;
-        let totalWeight = 0;
+        const topicPatterns = {
+            'ansiedad': /ansiedad|nervios|preocupación|estres|tensión|angustia/i,
+            'depresión': /depresión|triste|desanimado|desesperanza|apatía|vacío/i,
+            'autoestima': /autoestima|confianza|valor personal|insegur|timidez|inferioridad/i,
+            'estrés': /estrés|sobrecarga|agobio|presión|burnout|agotamiento/i,
+            'relaciones': /relación|pareja|amistad|familia|conflicto interpersonal|soledad/i,
+            'trauma': /trauma|abuso|experiencia dolorosa|TEPT|shock|recuerdo traumático/i,
+            'adicción': /adicción|dependencia|abuso sustancias|compulsión|vicio/i,
+            'sueño': /insomnio|sueño|dormir|descanso|pesadilla|parálisis sueño/i,
+            'alimentación': /alimentación|comer|dieta|trastorno alimenticio|bulimia|anorexia/i,
+            'personalidad': /personalidad|carácter|temperamento|rasgos|identidad|yo/i
+        };
         
-        for (const [factor, weight] of Object.entries(this.weights)) {
-            if (scores[factor] !== undefined) {
-                totalScore += scores[factor] * weight;
-                totalWeight += weight;
+        for (const [topic, pattern] of Object.entries(topicPatterns)) {
+            if (pattern.test(normalized)) {
+                topics.push(topic);
             }
         }
         
-        const finalScore = totalWeight > 0 ? totalScore / totalWeight : 0.5;
+        return topics;
+    }
+
+    assessPsychologicalSeverity(question) {
+        const normalized = question.toLowerCase();
         
+        const severityIndicators = {
+            high: [/siempre|nunca|constantemente|todo el tiempo|grave|severo|extremo|insoportable/i],
+            medium: [/a menudo|frecuentemente|bastante|moderado|regularmente|persistente/i],
+            low: [/a veces|ocasionalmente|leve|poco|alguna vez|de vez en cuando/i]
+        };
+        
+        for (const [level, patterns] of Object.entries(severityIndicators)) {
+            if (patterns.some(pattern => pattern.test(normalized))) {
+                return level;
+            }
+        }
+        
+        return 'unknown';
+    }
+
+    checkProfessionalReferralNeeded(question) {
+        const normalized = question.toLowerCase();
+        const redFlags = [
+            /suicidio|matarme|acabar con todo|no quiero vivir/i,
+            /autolesión|cortarme|dañarme|lastimarme/i,
+            /crisis|emergencia|urgencia psicológica|no puedo más/i,
+            /desesperado|sin esperanza|sin salida|atrapado/i,
+            /alucinación|delirio|voz|oír cosas|ver cosas|paranoia/i
+        ];
+        
+        return redFlags.some(pattern => pattern.test(normalized));
+    }
+
+    identifyRelevantApproaches(question, topics) {
+        const approaches = [];
+        const normalized = question.toLowerCase();
+        
+        const approachPatterns = {
+            'psicoanálisis': /freud|psicoanálisis|inconsciente|sueños|edipo|transferencia/i,
+            'cognitiva': /pensamiento|cognitivo|creencias|esquemas|terapia racional|beck/i,
+            'conductual': /conducta|comportamiento|condicionamiento|refuerzo|skinner|habito/i,
+            'humanista': /humanista|rogers|maslow|autorrealización|existencial|frankl/i,
+            'gestalt': /gestalt|figura fondo|aquí ahora|perls|holístico|totalidad/i
+        };
+        
+        for (const [approach, pattern] of Object.entries(approachPatterns)) {
+            if (pattern.test(normalized)) {
+                approaches.push(approach);
+            }
+        }
+        
+        return approaches;
+    }
+
+    generatePsychologicalInsights(question, topics, context) {
+        const insights = [];
+        
+        if (topics.includes('ansiedad')) {
+            insights.push({
+                type: 'psychoeducation',
+                content: 'La ansiedad es una respuesta natural del cuerpo ante situaciones percibidas como amenazantes. Se caracteriza por preocupación excesiva y síntomas físicos como tensión muscular.',
+                suggestion: 'Considera técnicas de respiración diafragmática o mindfulness para manejar momentos de ansiedad aguda.'
+            });
+        }
+        
+        if (topics.includes('depresión')) {
+            insights.push({
+                type: 'psychoeducation',
+                content: 'La depresión afecta el estado de ánimo, pensamientos y conducta. No es solo "estar triste", sino un trastorno complejo que requiere atención.',
+                suggestion: 'La activación conductual (realizar pequeñas actividades placenteras) puede ayudar a romper el ciclo depresivo.'
+            });
+        }
+        
+        if (topics.includes('autoestima')) {
+            insights.push({
+                type: 'psychoeducation',
+                content: 'La autoestima se construye a través de la autocompasión, el reconocimiento de logros y la aceptación de imperfecciones.',
+                suggestion: 'Practica el diálogo interno compasivo, tratándote como tratarías a un buen amigo.'
+            });
+        }
+        
+        return insights;
+    }
+
+    generatePsychologyRecommendations(topics, severity, needsProfessional) {
+        const recommendations = [];
+        
+        if (needsProfessional) {
+            recommendations.push({
+                priority: 'critical',
+                type: 'professional_referral',
+                message: '⚠️ **Importante**: Esta consulta sugiere necesidad inmediata de apoyo profesional. Te recomiendo contactar con un psicólogo o línea de ayuda.',
+                actions: [
+                    'Busca un psicólogo colegiado en tu área',
+                    'Considera líneas de ayuda psicológica gratuitas',
+                    'Si es urgente, contacta servicios de emergencia'
+                ]
+            });
+        }
+        
+        if (severity === 'high') {
+            recommendations.push({
+                priority: 'high',
+                type: 'self_care',
+                message: 'Tu situación parece tener alta intensidad. Es importante cuidarte y buscar apoyo.',
+                actions: [
+                    'Establece rutinas de autocuidado básico',
+                    'Busca apoyo en tu red social',
+                    'Considera recursos de autoayuda validados'
+                ]
+            });
+        }
+        
+        if (topics.length > 0) {
+            recommendations.push({
+                priority: 'medium',
+                type: 'psychoeducation',
+                message: 'El conocimiento sobre estos temas puede ser empoderante. Te sugiero información basada en evidencia.',
+                actions: [
+                    'Consulta fuentes psicológicas confiables',
+                    'Evita autodiagnóstico por internet',
+                    'Considera libros de psicología científica'
+                ]
+            });
+        }
+        
+        return recommendations;
+    }
+
+    generatePsychologyWarnings(question, severity) {
+        const warnings = [];
+        
+        if (severity === 'high') {
+            warnings.push({
+                type: 'caution',
+                message: 'Como asistente virtual, no puedo proporcionar terapia ni diagnóstico profesional. Mis respuestas son informativas, no terapéuticas.'
+            });
+        }
+        
+        const sensitiveTerms = ['suicidio', 'autolesión', 'abuso', 'trauma'];
+        if (sensitiveTerms.some(term => question.toLowerCase().includes(term))) {
+            warnings.push({
+                type: 'sensitive_content',
+                message: 'Esta consulta aborda temas sensibles. Te animo a buscar apoyo profesional adecuado.'
+            });
+        }
+        
+        return warnings;
+    }
+
+    assessQuestionComplexity(question) {
+        const wordCount = question.split(/\s+/).length;
+        const sentenceCount = (question.match(/[.!?]+/g) || []).length;
+        
+        if (wordCount > 50 || sentenceCount > 3) return 'high';
+        if (wordCount > 25) return 'medium';
+        return 'low';
+    }
+
+    analyzeEmotionalTone(question) {
+        const normalized = question.toLowerCase();
+        
+        const emotionalPatterns = {
+            'distress': /angustia|desesperación|no puedo más|sufro|dolor emocional/i,
+            'anxiety': /preocupación|nervios|miedo|tensión|incertidumbre/i,
+            'sadness': /tristeza|desánimo|vacío|soledad|abatimiento/i,
+            'anger': /ira|enojo|frustración|molesto|indignación/i,
+            'confusion': /confuso|perdido|no sé qué hacer|indecisión|duda/i
+        };
+        
+        for (const [emotion, pattern] of Object.entries(emotionalPatterns)) {
+            if (pattern.test(normalized)) {
+                return emotion;
+            }
+        }
+        
+        return 'neutral';
+    }
+
+    fallbackPsychologicalAnalysis(question) {
         return {
-            score: finalScore,
-            breakdown: scores,
-            level: this.getConfidenceLevel(finalScore),
-            shouldProceed: finalScore >= 0.4,
-            needsClarification: scores.questionClarity < 0.3
+            isPsychological: false,
+            detectedTopics: [],
+            severityLevel: 'unknown',
+            needsProfessionalHelp: false,
+            insights: [],
+            recommendations: [
+                {
+                    priority: 'low',
+                    type: 'general_advice',
+                    message: 'Si tienes inquietudes psicológicas, considera consultar con un profesional.',
+                    actions: ['Busca información en fuentes confiables']
+                }
+            ]
         };
     }
 
-    scoreQuestionClarity(question) {
-        let score = 0.5;
+    logAnalysis(analysis) {
+        this.analysisLog.push({
+            timestamp: new Date().toISOString(),
+            questionPreview: analysis.analysisContext?.questionPreview || 'No preview',
+            topics: analysis.detectedTopics || [],
+            severity: analysis.severityLevel || 'unknown'
+        });
         
-        if (question.length > 10 && question.length < 200) score += 0.2;
-        if (question.includes('?')) score += 0.1;
-        if (question.trim().split(/\s+/).length > 3) score += 0.1;
-        
-        if (question.length < 5) score -= 0.3;
-        if (question.length > 300) score -= 0.2;
-        if (/^\s*[.!¿?]+\s*$/.test(question)) score = 0.1;
-        
-        const vaguePatterns = [
-            /^(qué|quién|cómo|dónde|cuándo)\s*$/i,
-            /explícame$/i,
-            /dime$/i,
-            /habla\s+(de|sobre)$/i
-        ];
-        
-        if (vaguePatterns.some(pattern => pattern.test(question.trim()))) {
-            score -= 0.4;
+        // Limitar tamaño del log
+        if (this.analysisLog.length > 100) {
+            this.analysisLog.shift();
         }
-        
-        return Math.max(0.1, Math.min(1, score));
     }
 
-    scoreInformationAvailability(externalInfo, queryAnalysis) {
-        if (!externalInfo || externalInfo.length === 0) {
-            if (queryAnalysis.needsExternalInfo) {
-                return 0.2;
-            }
-            return 0.6;
-        }
-        
-        let score = 0.7;
-        const hasWikipedia = externalInfo.some(info => info.source === 'Wikipedia');
-        const hasBooks = externalInfo.some(info => info.source === 'OpenLibrary');
-        
-        if (hasWikipedia) score += 0.2;
-        if (hasBooks && queryAnalysis.types.includes('books')) score += 0.1;
-        if (externalInfo.length >= 2) score += 0.1;
-        
-        return Math.min(1, score);
+    getModuleStats() {
+        return {
+            module: this.moduleName,
+            version: this.moduleVersion,
+            totalAnalyses: this.analysisLog.length,
+            lastAnalysis: this.analysisLog[this.analysisLog.length - 1] || null,
+            commonTopics: this.calculateCommonTopics()
+        };
     }
 
-    scoreContextRelevance(context, queryAnalysis) {
-        if (!context || !context.lastResponse) {
-            return 0.5;
-        }
+    calculateCommonTopics() {
+        const topicCounts = {};
         
-        const lastResponse = context.lastResponse.toLowerCase();
-        const currentQuestion = queryAnalysis.original.toLowerCase();
+        this.analysisLog.forEach(log => {
+            log.topics?.forEach(topic => {
+                topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+            });
+        });
         
-        let relevance = 0.3;
-        
-        const topics = this.extractTopics(lastResponse);
-        const questionTopics = this.extractTopics(currentQuestion);
-        
-        const matchingTopics = topics.filter(topic => 
-            questionTopics.some(qt => qt.includes(topic) || topic.includes(qt))
-        );
-        
-        if (matchingTopics.length > 0) {
-            relevance += 0.4;
-        }
-        
-        const followUpIndicators = [
-            'pero', 'sin embargo', 'aunque', 'además',
-            'y qué', 'y cómo', 'y por qué', 'y cuándo',
-            'entonces', 'también', 'por otro lado'
-        ];
-        
-        const isFollowUp = followUpIndicators.some(indicator => 
-            currentQuestion.includes(indicator)
-        );
-        
-        if (isFollowUp) {
-            relevance += 0.3;
-        }
-        
-        return Math.min(1, relevance);
-    }
-
-    extractTopics(text) {
-        const words = text.toLowerCase()
-            .replace(/[^\w\sáéíóúñ]/gi, ' ')
-            .split(/\s+/)
-            .filter(word => word.length > 4);
-        
-        const stopWords = new Set(['sobre', 'acerca', 'decir', 'puedes', 'podrías', 'quiero', 'saber']);
-        return words.filter(word => !stopWords.has(word)).slice(0, 5);
-    }
-
-    scoreHistoricalAccuracy(history) {
-        if (!history || history.length === 0) return 0.5;
-        return 0.7;
-    }
-
-    scoreResponseQuality(queryAnalysis, externalInfo) {
-        let score = 0.5;
-        
-        const wellStructured = queryAnalysis.original.match(/\w+.*\?/);
-        if (wellStructured) score += 0.2;
-        
-        if (externalInfo && externalInfo.length > 0) {
-            const hasGoodContent = externalInfo.some(info => 
-                info.content && info.content.length > 50
-            );
-            if (hasGoodContent) score += 0.3;
-        }
-        
-        const sensitive = [
-            /polític(a|o)/i, /religi(ón|oso)/i,
-            /sexo/i, /droga/i, /violencia/i,
-            /opinión personal/i, /qué piensas/i
-        ];
-        
-        if (!sensitive.some(pattern => pattern.test(queryAnalysis.original))) {
-            score += 0.1;
-        }
-        
-        return Math.min(1, score);
-    }
-
-    getConfidenceLevel(score) {
-        if (score >= 0.8) return 'high';
-        if (score >= 0.6) return 'medium';
-        if (score >= 0.4) return 'low';
-        return 'very_low';
-    }
-
-    generateExplanation(confidenceResult) {
-        const { level, needsClarification } = confidenceResult;
-        
-        if (needsClarification) {
-            return "Parece que tu pregunta es un poco vaga. ¿Podrías especificar más?";
-        }
-        
-        if (level === 'very_low') {
-            return "No estoy segura de poder responder eso adecuadamente.";
-        }
-        
-        if (level === 'low') {
-            return "Intentaré responder, pero puede que no tenga toda la información.";
-        }
-        
-        if (level === 'medium') {
-            return "Creo que puedo darte una respuesta útil.";
-        }
-        
-        return "Estoy bastante segura de esta respuesta.";
+        return Object.entries(topicCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([topic, count]) => ({ topic, count }));
     }
 }
 
-// 2. ACTION SELECTOR
-class ActionSelector {
+// ==================== MÓDULO DE FILOSOFÍA INTEGRADO ====================
+
+class PhilosophyModule {
     constructor() {
-        this.actions = {
-            DIRECT_RESPONSE: 'direct_response',
-            SEARCH_EXTERNAL: 'search_external',
-            ASK_CLARIFICATION: 'ask_clarification',
-            DEFER: 'defer',
-            ANALYZE_DEEPLY: 'analyze_deeply',
-            GIVE_OPTIONS: 'give_options',
-            NEUTRAL_RESPONSE: 'neutral_response'
-        };
+        this.moduleName = 'PhilosophyChamber';
+        this.moduleVersion = '1.0.0';
+        this.analysisLog = [];
         
-        this.rules = [
-            {
-                condition: (confidence, analysis) => confidence.score < 0.3,
-                action: this.actions.ASK_CLARIFICATION,
-                priority: 1.0
+        // Base de conocimiento filosófico
+        this.philosophicalKnowledge = {
+            branches: {
+                'ética': {
+                    description: 'Estudio de la moral, el bien y el mal, y cómo debemos vivir.',
+                    keyQuestions: ['¿Qué es el bien?', '¿Cómo debemos actuar?', '¿Qué hace a una acción correcta?'],
+                    keyFigures: ['Aristóteles', 'Immanuel Kant', 'John Stuart Mill', 'Friedrich Nietzsche']
+                },
+                'metafísica': {
+                    description: 'Estudio de la realidad última, la existencia y la naturaleza del ser.',
+                    keyQuestions: ['¿Qué es real?', '¿Qué es la existencia?', '¿Qué es el tiempo?', '¿Tenemos libre albedrío?'],
+                    keyFigures: ['Platón', 'Aristóteles', 'René Descartes', 'Martin Heidegger']
+                },
+                'epistemología': {
+                    description: 'Estudio del conocimiento: su naturaleza, origen y límites.',
+                    keyQuestions: ['¿Qué es el conocimiento?', '¿Cómo conocemos?', '¿Qué podemos conocer?', '¿Existe la verdad absoluta?'],
+                    keyFigures: ['Platón', 'René Descartes', 'David Hume', 'Immanuel Kant']
+                },
+                'lógica': {
+                    description: 'Estudio del razonamiento válido y los principios del pensamiento correcto.',
+                    keyQuestions: ['¿Qué es un argumento válido?', '¿Cómo distinguir buen y mal razonamiento?'],
+                    keyFigures: ['Aristóteles', 'Gottlob Frege', 'Bertrand Russell', 'Kurt Gödel']
+                },
+                'estética': {
+                    description: 'Estudio de la belleza, el arte y la percepción sensorial.',
+                    keyQuestions: ['¿Qué es la belleza?', '¿Qué es el arte?', '¿Existen criterios objetivos de valor estético?'],
+                    keyFigures: ['Platón', 'Immanuel Kant', 'Arthur Schopenhauer', 'Theodor Adorno']
+                }
             },
-            {
-                condition: (confidence, analysis) => analysis.needsExternalInfo,
-                action: this.actions.SEARCH_EXTERNAL,
-                priority: 0.9
+
+            philosophicalConcepts: {
+                'ética': {
+                    'deontología': 'Ética basada en el deber y las normas (Kant)',
+                    'consecuencialismo': 'Ética basada en las consecuencias de las acciones (Utilitarismo)',
+                    'ética virtud': 'Ética basada en el carácter y las virtudes (Aristóteles)',
+                    'existencialismo': 'Enfoque en la libertad y responsabilidad individual (Sartre)',
+                    'relativismo moral': 'Creencia de que la moral depende del contexto cultural'
+                },
+                'metafísica': {
+                    'dualismo': 'Creencia en dos sustancias distintas: mente y materia (Descartes)',
+                    'monismo': 'Creencia en una única sustancia fundamental (Spinoza)',
+                    'idealismo': 'Creencia de que la realidad es mental o depende de la mente (Berkeley)',
+                    'materialismo': 'Creencia de que solo existe la materia (Marx)',
+                    'determinismo': 'Creencia de que todos los eventos están causados'
+                },
+                'epistemología': {
+                    'racionalismo': 'El conocimiento proviene principalmente de la razón (Descartes)',
+                    'empirismo': 'El conocimiento proviene principalmente de la experiencia (Locke, Hume)',
+                    'escepticismo': 'Duda sobre la posibilidad de conocimiento cierto (Pirrón)',
+                    'constructivismo': 'El conocimiento se construye activamente (Piaget)',
+                    'pragmatismo': 'La verdad es lo que funciona en la práctica (James, Dewey)'
+                }
             },
-            {
-                condition: (confidence, analysis) => this.isSensitiveTopic(analysis.original),
-                action: this.actions.NEUTRAL_RESPONSE,
-                priority: 0.85
+
+            philosophers: {
+                'platón': {
+                    era: 'Antigua Grecia',
+                    contributions: ['Teoría de las Ideas', 'Alegoría de la caverna', 'Filosofía política'],
+                    works: ['La República', 'Fedón', 'El banquete']
+                },
+                'aristóteles': {
+                    era: 'Antigua Grecia',
+                    contributions: ['Lógica formal', 'Ética de la virtud', 'Metafísica'],
+                    works: ['Ética a Nicómaco', 'Metafísica', 'Política']
+                },
+                'descartes': {
+                    era: 'Modernidad',
+                    contributions: ['Cogito ergo sum', 'Dualismo mente-cuerpo', 'Método de la duda'],
+                    works: ['Discurso del método', 'Meditaciones metafísicas']
+                },
+                'kant': {
+                    era: 'Ilustración',
+                    contributions: ['Imperativo categórico', 'Crítica de la razón pura', 'Filosofía trascendental'],
+                    works: ['Crítica de la razón pura', 'Fundamentación de la metafísica de las costumbres']
+                },
+                'nietzsche': {
+                    era: 'Siglo XIX',
+                    contributions: ['Muerte de Dios', 'Superhombre', 'Voluntad de poder'],
+                    works: ['Así habló Zaratustra', 'Más allá del bien y del mal', 'La genealogía de la moral']
+                }
             },
-            {
-                condition: (confidence, analysis) => this.isComplexQuestion(analysis.original),
-                action: this.actions.ANALYZE_DEEPLY,
-                priority: 0.8
-            },
-            {
-                condition: (confidence, analysis) => this.hasMultipleInterpretations(analysis.original),
-                action: this.actions.GIVE_OPTIONS,
-                priority: 0.75
-            },
-            {
-                condition: (confidence, analysis) => confidence.score >= 0.7,
-                action: this.actions.DIRECT_RESPONSE,
-                priority: 0.7
-            },
-            {
-                condition: (confidence, analysis) => confidence.score >= 0.5 && confidence.score < 0.7,
-                action: this.actions.DIRECT_RESPONSE,
-                priority: 0.6
-            },
-            {
-                condition: (confidence, analysis) => confidence.score < 0.4 && !analysis.needsExternalInfo,
-                action: this.actions.DEFER,
-                priority: 0.5
+
+            ethicalDilemmas: {
+                'trolley': {
+                    description: '¿Debes desviar un tren para matar a una persona en lugar de cinco?',
+                    considerations: ['Consecuencialismo vs. Deontología', 'Acción vs. Omisión', 'Valor de la vida humana']
+                },
+                'experience_machine': {
+                    description: '¿Te conectarías a una máquina que te dé experiencias placenteras perfectas pero irreales?',
+                    considerations: ['Realidad vs. Felicidad', 'Autenticidad', 'Naturaleza de la experiencia']
+                },
+                'ship_of_theseus': {
+                    description: 'Si reemplazas todas las partes de un barco, ¿sigue siendo el mismo barco?',
+                    considerations: ['Identidad personal', 'Cambio vs. Permanencia', 'Naturaleza de la identidad']
+                }
             }
-        ];
+        };
     }
 
-    selectAction(confidenceScore, queryAnalysis, context = {}) {
-        const applicableRules = [];
+    async analyzeQuestion(question, context = {}) {
+        const analysisStart = Date.now();
         
-        for (const rule of this.rules) {
-            if (rule.condition(confidenceScore, queryAnalysis, context)) {
-                applicableRules.push({
-                    action: rule.action,
-                    priority: rule.priority,
-                    reason: this.getRuleReason(rule, queryAnalysis)
+        try {
+            // Detectar ramas filosóficas relevantes
+            const detectedBranches = this.detectPhilosophicalBranches(question);
+            
+            // Identificar conceptos filosóficos
+            const detectedConcepts = this.detectPhilosophicalConcepts(question);
+            
+            // Detectar dilemas éticos
+            const hasEthicalDilemma = this.detectEthicalDilemma(question);
+            
+            // Identificar filósofos mencionados
+            const mentionedPhilosophers = this.detectMentionedPhilosophers(question);
+            
+            // Evaluar profundidad filosófica
+            const philosophicalDepth = this.assessPhilosophicalDepth(question);
+            
+            const analysisResult = {
+                module: this.moduleName,
+                timestamp: new Date().toISOString(),
+                processingTime: Date.now() - analysisStart,
+                
+                // Resultados del análisis
+                isPhilosophical: detectedBranches.length > 0 || detectedConcepts.length > 0,
+                detectedBranches,
+                detectedConcepts,
+                hasEthicalDilemma,
+                mentionedPhilosophers,
+                philosophicalDepth,
+                
+                // Explicaciones filosóficas
+                explanations: this.generatePhilosophicalExplanations(detectedConcepts, mentionedPhilosophers),
+                
+                // Preguntas para reflexión
+                reflectionQuestions: this.generateReflectionQuestions(question, detectedBranches),
+                
+                // Recomendaciones
+                recommendations: this.generatePhilosophyRecommendations(detectedBranches, philosophicalDepth),
+                
+                // Contexto adicional
+                analysisContext: {
+                    questionComplexity: this.assessQuestionComplexity(question),
+                    historicalContext: this.provideHistoricalContext(mentionedPhilosophers),
+                    currentRelevance: this.assessCurrentRelevance(question)
+                }
+            };
+            
+            // Guardar en registro
+            this.logAnalysis(analysisResult);
+            
+            return analysisResult;
+            
+        } catch (error) {
+            logger.error('Error en análisis filosófico', { error: error.message });
+            
+            return {
+                module: this.moduleName,
+                error: true,
+                message: 'Error en análisis filosófico',
+                fallbackAnalysis: this.fallbackPhilosophicalAnalysis(question)
+            };
+        }
+    }
+
+    detectPhilosophicalBranches(question) {
+        const normalized = question.toLowerCase();
+        const branches = [];
+        
+        const branchPatterns = {
+            'ética': /ética|moral|bien|mal|deber|virtud|justicia|responsabilidad/i,
+            'metafísica': /realidad|existencia|ser|tiempo|espacio|libre albedrío|determinismo/i,
+            'epistemología': /conocimiento|verdad|creencia|razón|experiencia|ciencia|método/i,
+            'lógica': /argumento|razonamiento|validez|falacia|premisa|conclusión|silogismo/i,
+            'estética': /belleza|arte|feo|sublime|creatividad|expresión|gusto/i,
+            'filosofía política': /sociedad|gobierno|poder|libertad|igualdad|derechos|contrato social/i
+        };
+        
+        for (const [branch, pattern] of Object.entries(branchPatterns)) {
+            if (pattern.test(normalized)) {
+                branches.push(branch);
+            }
+        }
+        
+        return branches;
+    }
+
+    detectPhilosophicalConcepts(question) {
+        const normalized = question.toLowerCase();
+        const concepts = [];
+        
+        // Buscar conceptos en todas las ramas
+        for (const [branch, branchConcepts] of Object.entries(this.philosophicalKnowledge.philosophicalConcepts)) {
+            for (const [concept, description] of Object.entries(branchConcepts)) {
+                if (normalized.includes(concept.toLowerCase())) {
+                    concepts.push({
+                        concept,
+                        branch,
+                        description
+                    });
+                }
+            }
+        }
+        
+        return concepts;
+    }
+
+    detectEthicalDilemma(question) {
+        const normalized = question.toLowerCase();
+        const dilemmaPatterns = [
+            /debo|debería|es correcto|es justo|qué hacer|decidir entre/i,
+            /dilema|conflicto moral|problema ético|elección difícil/i,
+            /trolley|tren|desviar|matar a uno para salvar a muchos/i,
+            /máquina de experiencias|felicidad artificial|realidad virtual/i,
+            /barco de teseo|identidad|cambio partes|mismo objeto/i
+        ];
+        
+        return dilemmaPatterns.some(pattern => pattern.test(normalized));
+    }
+
+    detectMentionedPhilosophers(question) {
+        const normalized = question.toLowerCase();
+        const philosophers = [];
+        
+        for (const [philosopher, info] of Object.entries(this.philosophicalKnowledge.philosophers)) {
+            if (normalized.includes(philosopher.toLowerCase())) {
+                philosophers.push({
+                    name: philosopher.charAt(0).toUpperCase() + philosopher.slice(1),
+                    era: info.era,
+                    contributions: info.contributions
                 });
             }
         }
         
-        applicableRules.sort((a, b) => b.priority - a.priority);
-        
-        if (applicableRules.length === 0) {
-            return this.getDefaultAction();
-        }
-        
-        const selectedRule = applicableRules[0];
-        
-        return {
-            action: selectedRule.action,
-            priority: selectedRule.priority,
-            reason: selectedRule.reason,
-            alternatives: applicableRules.slice(1, 3).map(r => r.action),
-            confidence: confidenceScore.score
-        };
+        return philosophers;
     }
 
-    isSensitiveTopic(question) {
-        const sensitivePatterns = [
-            /opinas sobre/i,
-            /qué piensas de/i,
-            /estás de acuerdo/i,
-            /polític(a|o)/i,
-            /religi(ón|oso)/i,
-            /sexo/i,
-            /dinero.*personal/i
-        ];
-        
-        return sensitivePatterns.some(pattern => pattern.test(question.toLowerCase()));
-    }
-
-    isComplexQuestion(question) {
-        const complexityIndicators = [
-            /explica.*detalladamente/i,
-            /comparar.*y.*/i,
-            /ventajas.*desventajas/i,
-            /causas.*consecuencias/i,
-            /analizar.*/i,
-            /múltiples.*factores/i
-        ];
-        
+    assessPhilosophicalDepth(question) {
         const wordCount = question.split(/\s+/).length;
-        const hasMultipleQuestions = (question.match(/\?/g) || []).length > 1;
+        const conceptCount = this.detectPhilosophicalConcepts(question).length;
+        const branchCount = this.detectPhilosophicalBranches(question).length;
         
-        return complexityIndicators.some(pattern => pattern.test(question)) ||
-               (wordCount > 25 && hasMultipleQuestions);
+        let depthScore = 0;
+        
+        if (wordCount > 30) depthScore += 1;
+        if (conceptCount > 1) depthScore += 2;
+        if (branchCount > 1) depthScore += 1;
+        if (this.detectEthicalDilemma(question)) depthScore += 2;
+        
+        if (depthScore >= 4) return 'deep';
+        if (depthScore >= 2) return 'moderate';
+        return 'surface';
     }
 
-    hasMultipleInterpretations(question) {
-        const ambiguousPatterns = [
-            /puede.*significar/i,
-            /depende.*/i,
-            /por un lado.*por otro/i,
-            /algunos.*otros/i,
-            /tal vez.*o quizás/i
-        ];
+    generatePhilosophicalExplanations(concepts, philosophers) {
+        const explanations = [];
         
-        const connectors = (question.match(/ o | y | pero | aunque /gi) || []).length;
-        
-        return ambiguousPatterns.some(pattern => pattern.test(question)) || connectors >= 2;
-    }
-
-    getRuleReason(rule, analysis) {
-        const reasons = {
-            [this.actions.ASK_CLARIFICATION]: 'Pregunta demasiado vaga o ambigua',
-            [this.actions.SEARCH_EXTERNAL]: 'Necesita información factual verificable',
-            [this.actions.NEUTRAL_RESPONSE]: 'Tema sensible que requiere neutralidad',
-            [this.actions.ANALYZE_DEEPLY]: 'Pregunta compleja que requiere análisis detallado',
-            [this.actions.GIVE_OPTIONS]: 'Múltiples interpretaciones posibles',
-            [this.actions.DEFER]: 'Confianza insuficiente para responder adecuadamente',
-            [this.actions.DIRECT_RESPONSE]: 'Pregunta clara con información suficiente'
-        };
-        
-        return reasons[rule.action] || 'Acción estándar seleccionada';
-    }
-
-    getDefaultAction() {
-        return {
-            action: this.actions.DIRECT_RESPONSE,
-            priority: 0.5,
-            reason: 'Acción por defecto',
-            alternatives: [],
-            confidence: 0.5
-        };
-    }
-
-    getActionInstructions(action) {
-        const instructions = {
-            [this.actions.DIRECT_RESPONSE]: {
-                tone: 'direct',
-                length: 'normal',
-                includeSources: false,
-                disclaimer: false
-            },
-            [this.actions.SEARCH_EXTERNAL]: {
-                tone: 'informative',
-                length: 'detailed',
-                includeSources: true,
-                disclaimer: false
-            },
-            [this.actions.ASK_CLARIFICATION]: {
-                tone: 'curious',
-                length: 'brief',
-                includeSources: false,
-                disclaimer: true
-            },
-            [this.actions.DEFER]: {
-                tone: 'humble',
-                length: 'brief',
-                includeSources: false,
-                disclaimer: true
-            },
-            [this.actions.ANALYZE_DEEPLY]: {
-                tone: 'analytical',
-                length: 'detailed',
-                includeSources: true,
-                disclaimer: true
-            },
-            [this.actions.GIVE_OPTIONS]: {
-                tone: 'exploratory',
-                length: 'moderate',
-                includeSources: false,
-                disclaimer: true
-            },
-            [this.actions.NEUTRAL_RESPONSE]: {
-                tone: 'neutral',
-                length: 'moderate',
-                includeSources: true,
-                disclaimer: true
-            }
-        };
-        
-        return instructions[action] || instructions[this.actions.DIRECT_RESPONSE];
-    }
-
-    getActionMessage(action, question) {
-        const messages = {
-            [this.actions.ASK_CLARIFICATION]: [
-                `"${question}" - Podrías especificar un poco más lo que buscas?`,
-                `Interesante pregunta. Para responderte mejor, ¿podrías dar más detalles?`,
-                `Hmm, esa pregunta puede interpretarse de varias formas. ¿A qué aspecto te refieres exactamente?`
-            ],
-            [this.actions.DEFER]: [
-                `Sobre "${question}", prefiero ser cuidadosa. No tengo suficiente confianza para darte una respuesta adecuada.`,
-                `Esa es una pregunta interesante, pero creo que necesitaría más información para responderte bien.`,
-                `Como chica gato seria, prefiero admitir cuando no estoy completamente segura. ¿Quizás otra pregunta?`
-            ],
-            [this.actions.NEUTRAL_RESPONSE]: [
-                `Sobre ese tema, puedo compartir información objetiva:`,
-                `Como asistente, me limito a proporcionar información factual sobre eso:`,
-                `Hay diferentes perspectivas al respecto. Te comparto lo que sé:`
-            ]
-        };
-        
-        const actionMessages = messages[action];
-        if (actionMessages) {
-            return actionMessages[Math.floor(Math.random() * actionMessages.length)];
-        }
-        
-        return null;
-    }
-}
-
-// 3. DECISION ENGINE
-class DecisionEngine {
-    constructor() {
-        this.confidenceScorer = new ConfidenceScorer();
-        this.actionSelector = new ActionSelector();
-        this.decisionHistory = new Map();
-        this.maxHistoryPerUser = 10;
-    }
-
-    async makeDecision(queryAnalysis, externalInfo, context = {}) {
-        const startTime = Date.now();
-        
-        const confidence = this.confidenceScorer.calculateConfidence(
-            queryAnalysis, 
-            externalInfo, 
-            context
-        );
-        
-        const action = this.actionSelector.selectAction(
-            confidence, 
-            queryAnalysis, 
-            context
-        );
-        
-        const decision = {
-            action: action.action,
-            confidence: {
-                overall: confidence.score,
-                level: confidence.level,
-                breakdown: confidence.breakdown
-            },
-            reasoning: {
-                primary: action.reason,
-                confidenceExplanation: this.confidenceScorer.generateExplanation(confidence),
-                actionExplanation: this.getActionExplanation(action)
-            },
-            instructions: this.actionSelector.getActionInstructions(action.action),
-            metadata: {
-                processingTime: Date.now() - startTime,
-                queryTypes: queryAnalysis.types,
-                hasExternalInfo: !!externalInfo && externalInfo.length > 0,
-                externalInfoCount: externalInfo ? externalInfo.length : 0,
-                timestamp: new Date().toISOString()
-            },
-            alternatives: action.alternatives,
-            shouldProceed: confidence.shouldProceed
-        };
-        
-        if (this.needsSpecialMessage(action.action)) {
-            decision.prefixMessage = this.actionSelector.getActionMessage(
-                action.action, 
-                queryAnalysis.original.substring(0, 100)
-            );
-        }
-        
-        this.saveDecision(context.userId, decision);
-        
-        logger.debug('Decisión generada', {
-            action: decision.action,
-            confidence: decision.confidence.overall,
-            reasoning: decision.reasoning.primary
+        // Explicar conceptos detectados
+        concepts.forEach(conceptData => {
+            explanations.push({
+                type: 'concept_explanation',
+                concept: conceptData.concept,
+                branch: conceptData.branch,
+                content: conceptData.description,
+                example: this.generateConceptExample(conceptData.concept, conceptData.branch)
+            });
         });
         
-        return decision;
+        // Explicar filósofos mencionados
+        philosophers.forEach(philosopher => {
+            const philosopherInfo = this.philosophicalKnowledge.philosophers[philosopher.name.toLowerCase()];
+            if (philosopherInfo) {
+                explanations.push({
+                    type: 'philosopher_context',
+                    philosopher: philosopher.name,
+                    era: philosopherInfo.era,
+                    keyContributions: philosopherInfo.contributions.slice(0, 3),
+                    relevance: `Su pensamiento influyó en ${this.getPhilosopherInfluence(philosopher.name)}`
+                });
+            }
+        });
+        
+        return explanations;
     }
 
-    getActionExplanation(action) {
-        const explanations = {
-            direct_response: 'Respuesta directa basada en conocimiento disponible',
-            search_external: 'Búsqueda de información externa requerida',
-            ask_clarification: 'Se necesita clarificación del usuario',
-            defer: 'Mejor no responder por falta de confianza',
-            analyze_deeply: 'Análisis profundo requerido',
-            give_options: 'Presentar múltiples perspectivas',
-            neutral_response: 'Respuesta neutral para tema sensible'
+    generateConceptExample(concept, branch) {
+        const examples = {
+            'deontología': 'Kant diría que no debemos mentir nunca, incluso para salvar una vida, porque mentir viola el deber moral universal.',
+            'consecuencialismo': 'Un utilitarista podría apoyar una pequeña mentira si evita un gran sufrimiento, pues evalúa las consecuencias.',
+            'dualismo': 'Descartes argumentaba que la mente (pensamiento) y el cuerpo (materia) son sustancias distintas.',
+            'racionalismo': 'Descartes creía que ciertas verdades (como las matemáticas) se conocen por la razón, no por los sentidos.',
+            'empirismo': 'Hume sostenía que todo conocimiento proviene de la experiencia sensorial.'
         };
         
-        return explanations[action.action] || 'Acción estándar';
+        return examples[concept] || `El concepto de ${concept} en ${branch} aborda cuestiones fundamentales sobre ${this.getBranchFocus(branch)}.`;
     }
 
-    needsSpecialMessage(action) {
-        const specialActions = [
-            'ask_clarification',
-            'defer',
-            'neutral_response'
+    getBranchFocus(branch) {
+        const focuses = {
+            'ética': 'cómo debemos vivir y actuar',
+            'metafísica': 'la naturaleza de la realidad',
+            'epistemología': 'el conocimiento y la verdad',
+            'lógica': 'el razonamiento correcto',
+            'estética': 'la belleza y el arte'
+        };
+        
+        return focuses[branch] || 'cuestiones fundamentales';
+    }
+
+    getPhilosopherInfluence(philosopherName) {
+        const influences = {
+            'Platón': 'la filosofía occidental, la teoría política y la epistemología',
+            'Aristóteles': 'la lógica, la ética y la ciencia durante siglos',
+            'Kant': 'la filosofía moderna, la ética y la epistemología',
+            'Nietzsche': 'la filosofía contemporánea, la psicología y la crítica cultural',
+            'Descartes': 'la filosofía moderna y el método científico'
+        };
+        
+        return influences[philosopherName] || 'diversas áreas del pensamiento';
+    }
+
+    generateReflectionQuestions(question, branches) {
+        const questions = [];
+        
+        if (branches.includes('ética')) {
+            questions.push({
+                type: 'ethical_reflection',
+                question: '¿Qué principios o valores guiarían tu decisión en esta situación?',
+                purpose: 'Explorar fundamentos éticos personales'
+            });
+        }
+        
+        if (branches.includes('epistemología')) {
+            questions.push({
+                type: 'epistemological_reflection',
+                question: '¿Cómo sabemos que lo que creemos sobre esto es verdadero?',
+                purpose: 'Cuestionar bases del conocimiento'
+            });
+        }
+        
+        if (branches.includes('metafísica')) {
+            questions.push({
+                type: 'metaphysical_reflection',
+                question: '¿Qué suposiciones sobre la realidad subyacen a esta pregunta?',
+                purpose: 'Explorar presupuestos ontológicos'
+            });
+        }
+        
+        // Pregunta general para profundizar
+        questions.push({
+            type: 'general_reflection',
+            question: '¿Qué otras perspectivas podrían considerarse en este asunto?',
+            purpose: 'Fomentar pensamiento multidimensional'
+        });
+        
+        return questions;
+    }
+
+    generatePhilosophyRecommendations(branches, depth) {
+        const recommendations = [];
+        
+        if (depth === 'deep') {
+            recommendations.push({
+                priority: 'high',
+                type: 'deep_engagement',
+                message: 'Esta pregunta aborda temas filosóficos profundos. Te sugiero un análisis detallado.',
+                suggestions: [
+                    'Considera múltiples perspectivas filosóficas',
+                    'Examina los presupuestos de cada posición',
+                    'Reflexiona sobre las implicaciones prácticas'
+                ]
+            });
+        }
+        
+        if (branches.includes('ética') && this.detectEthicalDilemma) {
+            recommendations.push({
+                priority: 'medium',
+                type: 'ethical_analysis',
+                message: 'Este dilema ético merece consideración cuidadosa de diferentes enfoques morales.',
+                suggestions: [
+                    'Analiza desde perspectivas deontológicas y consecuencialistas',
+                    'Considera el contexto y las circunstancias',
+                    'Reflexiona sobre valores en conflicto'
+                ]
+            });
+        }
+        
+        if (branches.length > 1) {
+            recommendations.push({
+                priority: 'medium',
+                type: 'interdisciplinary',
+                message: 'Tu pregunta conecta varias ramas filosóficas. Esto enriquece el análisis.',
+                suggestions: [
+                    'Examina cómo se relacionan las diferentes ramas',
+                    'Busca conexiones entre conceptos',
+                    'Considera implicaciones cruzadas'
+                ]
+            });
+        }
+        
+        return recommendations;
+    }
+
+    assessQuestionComplexity(question) {
+        const wordCount = question.split(/\s+/).length;
+        const conceptCount = this.detectPhilosophicalConcepts(question).length;
+        
+        if (conceptCount > 2 || wordCount > 60) return 'high';
+        if (conceptCount > 0 || wordCount > 30) return 'medium';
+        return 'low';
+    }
+
+    provideHistoricalContext(philosophers) {
+        if (philosophers.length === 0) return 'No se mencionaron filósofos específicos';
+        
+        const eras = philosophers.map(p => p.era);
+        const uniqueEras = [...new Set(eras)];
+        
+        return `Contexto histórico: ${uniqueEras.join(', ')}. Estos períodos influyeron en el desarrollo de sus ideas.`;
+    }
+
+    assessCurrentRelevance(question) {
+        const currentTopics = [
+            /inteligencia artificial|IA|robot|algoritmo/i,
+            /cambio climático|medio ambiente|sostenibilidad/i,
+            /redes sociales|internet|tecnología digital/i,
+            /bioética|genética|edición genética|CRISPR/i,
+            /globalización|migración|diversidad cultural/i
         ];
         
-        return specialActions.includes(action);
+        const matches = currentTopics.filter(pattern => pattern.test(question.toLowerCase()));
+        
+        if (matches.length > 0) {
+            return `Esta pregunta conecta con debates contemporáneos sobre ${this.getCurrentTopicsDescription(matches)}`;
+        }
+        
+        return 'La pregunta aborda temas filosóficos perennes relevantes en cualquier época';
     }
 
-    saveDecision(userId, decision) {
-        if (!this.decisionHistory.has(userId)) {
-            this.decisionHistory.set(userId, []);
-        }
-        
-        const history = this.decisionHistory.get(userId);
-        history.push(decision);
-        
-        if (history.length > this.maxHistoryPerUser) {
-            history.shift();
-        }
-        
-        this.decisionHistory.set(userId, history);
-    }
-
-    getDecisionHistory(userId, limit = 5) {
-        const history = this.decisionHistory.get(userId) || [];
-        return history.slice(-limit);
-    }
-
-    adaptSystemPrompt(basePrompt, decision, queryAnalysis) {
-        let adaptedPrompt = basePrompt;
-        
-        const actionInstructions = this.getActionSpecificInstructions(decision.action);
-        if (actionInstructions) {
-            adaptedPrompt += `\n\n# INSTRUCCIONES ESPECÍFICAS:\n${actionInstructions}`;
-        }
-        
-        if (decision.confidence.level === 'low' || decision.confidence.level === 'very_low') {
-            adaptedPrompt += `\n\n# ADVERTENCIA: Confianza baja. Sé especialmente cuidadosa y considera pedir clarificación si es necesario.`;
-        }
-        
-        if (decision.action === 'neutral_response') {
-            adaptedPrompt += `\n\n# TEMA SENSIBLE: Mantén un tono neutral y objetivo. Evita opiniones personales. Proporciona información factual sin tomar posición.`;
-        }
-        
-        if (decision.action === 'analyze_deeply') {
-            adaptedPrompt += `\n\n# ANÁLISIS PROFUNDO: Proporciona una respuesta estructurada. Considera múltiples aspectos. Sé detallada pero concisa.`;
-        }
-        
-        return adaptedPrompt;
-    }
-
-    getActionSpecificInstructions(action) {
-        const instructions = {
-            direct_response: 'Responde de manera directa y clara. No des rodeos innecesarios.',
-            search_external: 'Incluye información verificada de fuentes externas cuando sea relevante.',
-            ask_clarification: 'Pide clarificación de manera educada. Sugiere posibles direcciones.',
-            analyze_deeply: 'Estructura la respuesta en puntos claros. Considera diferentes perspectivas.',
-            give_options: 'Presenta diferentes interpretaciones u opciones de manera objetiva.',
-            neutral_response: 'Mantén neutralidad absoluta. Cita hechos, no opiniones.',
-            defer: 'Reconoce las limitaciones educadamente. Ofrece alternativas si es posible.'
+    getCurrentTopicsDescription(matches) {
+        const topicsMap = {
+            'inteligencia artificial': 'ética de la IA y automatización',
+            'cambio climático': 'justicia ambiental y responsabilidad intergeneracional',
+            'redes sociales': 'privacidad, verdad y relaciones en la era digital',
+            'bioética': 'límites éticos de la intervención humana en la vida',
+            'globalización': 'identidad, justicia y derechos en un mundo interconectado'
         };
         
-        return instructions[action];
+        const topics = matches.map(match => {
+            for (const [key, value] of Object.entries(topicsMap)) {
+                if (match.source.includes(key.toLowerCase())) {
+                    return value;
+                }
+            }
+            return 'temas contemporáneos';
+        });
+        
+        return topics.join(', ');
+    }
+
+    fallbackPhilosophicalAnalysis(question) {
+        return {
+            isPhilosophical: false,
+            detectedBranches: [],
+            philosophicalDepth: 'surface',
+            explanations: [],
+            recommendations: [
+                {
+                    priority: 'low',
+                    type: 'general_philosophy',
+                    message: 'La filosofía explora preguntas fundamentales sobre la existencia, el conocimiento y la ética.',
+                    suggestions: ['Formula preguntas claras y específicas', 'Considera diferentes perspectivas']
+                }
+            ]
+        };
+    }
+
+    logAnalysis(analysis) {
+        this.analysisLog.push({
+            timestamp: new Date().toISOString(),
+            branches: analysis.detectedBranches || [],
+            depth: analysis.philosophicalDepth || 'unknown',
+            hasEthicalDilemma: analysis.hasEthicalDilemma || false
+        });
+        
+        // Limitar tamaño del log
+        if (this.analysisLog.length > 100) {
+            this.analysisLog.shift();
+        }
+    }
+
+    getModuleStats() {
+        return {
+            module: this.moduleName,
+            version: this.moduleVersion,
+            totalAnalyses: this.analysisLog.length,
+            mostCommonBranches: this.calculateCommonBranches(),
+            ethicalDilemmasCount: this.analysisLog.filter(log => log.hasEthicalDilemma).length
+        };
+    }
+
+    calculateCommonBranches() {
+        const branchCounts = {};
+        
+        this.analysisLog.forEach(log => {
+            log.branches?.forEach(branch => {
+                branchCounts[branch] = (branchCounts[branch] || 0) + 1;
+            });
+        });
+        
+        return Object.entries(branchCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([branch, count]) => ({ branch, count }));
     }
 }
+
+// ==================== CONCILIO DE MÓDULOS INTEGRADO ====================
+
+class ModuleCouncil {
+    constructor() {
+        this.councilName = 'ModuleCouncil';
+        this.councilVersion = '1.0.0';
+        
+        // Inicializar módulos
+        this.modules = {
+            psychology: CONFIG.PSYCHOLOGY_MODULE_ENABLED ? new PsychologyModule() : null,
+            philosophy: CONFIG.PHILOSOPHY_MODULE_ENABLED ? new PhilosophyModule() : null
+        };
+        
+        this.activeModules = new Set();
+        this.councilLog = [];
+        this.maxLogSize = 50;
+        
+        // Activar módulos configurados
+        if (this.modules.psychology) this.activeModules.add('psychology');
+        if (this.modules.philosophy) this.activeModules.add('philosophy');
+    }
+
+    /**
+     * Convocar reunión de módulos para analizar pregunta
+     */
+    async conveneCouncilMeeting(userQuestion, context = {}) {
+        const meetingId = `meeting_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const meetingStart = Date.now();
+        
+        logger.debug('Convocando reunión del Concilio', {
+            meetingId,
+            questionPreview: userQuestion.substring(0, 50),
+            activeModules: Array.from(this.activeModules)
+        });
+        
+        // ===== PRIMERA RONDA: Análisis Individual =====
+        const individualAnalyses = {};
+        
+        // Psicología analiza (si está activo)
+        if (this.modules.psychology && this.activeModules.has('psychology')) {
+            try {
+                individualAnalyses.psychology = await this.modules.psychology.analyzeQuestion(
+                    userQuestion,
+                    context
+                );
+                logger.debug('Análisis psicológico completado', {
+                    topics: individualAnalyses.psychology.detectedTopics?.length || 0,
+                    severity: individualAnalyses.psychology.severityLevel
+                });
+            } catch (error) {
+                logger.error('Error en análisis psicológico', { error: error.message });
+                individualAnalyses.psychology = { error: true, message: 'Análisis fallido' };
+            }
+        }
+        
+        // Filosofía analiza (si está activo)
+        if (this.modules.philosophy && this.activeModules.has('philosophy')) {
+            try {
+                individualAnalyses.philosophy = await this.modules.philosophy.analyzeQuestion(
+                    userQuestion,
+                    context
+                );
+                logger.debug('Análisis filosófico completado', {
+                    branches: individualAnalyses.philosophy.detectedBranches?.length || 0,
+                    depth: individualAnalyses.philosophy.philosophicalDepth
+                });
+            } catch (error) {
+                logger.error('Error en análisis filosófico', { error: error.message });
+                individualAnalyses.philosophy = { error: true, message: 'Análisis fallido' };
+            }
+        }
+        
+        // ===== SEGUNDA RONDA: Integración y Decisión =====
+        const integratedAnalysis = this.integrateAnalyses(individualAnalyses, userQuestion, context);
+        
+        // ===== RESULTADO FINAL DEL CONCILIO =====
+        const meetingResult = {
+            meetingId,
+            timestamp: new Date().toISOString(),
+            processingTime: Date.now() - meetingStart,
+            participants: Array.from(this.activeModules),
+            
+            // Análisis individuales
+            analyses: individualAnalyses,
+            
+            // Análisis integrado
+            integratedAnalysis,
+            
+            // Recomendaciones del concilio
+            councilRecommendations: this.generateCouncilRecommendations(individualAnalyses, integratedAnalysis),
+            
+            // Nivel de prioridad
+            priorityLevel: this.determinePriorityLevel(individualAnalyses),
+            
+            // Acciones sugeridas
+            suggestedActions: this.suggestActions(individualAnalyses, integratedAnalysis),
+            
+            // Información para el prompt
+            promptEnhancements: this.generatePromptEnhancements(individualAnalyses)
+        };
+        
+        // Guardar en registro del concilio
+        this.addToCouncilLog(meetingResult);
+        
+        logger.info('Reunión del Concilio completada', {
+            meetingId,
+            processingTime: meetingResult.processingTime,
+            participants: meetingResult.participants.length,
+            priority: meetingResult.priorityLevel
+        });
+        
+        return meetingResult;
+    }
+
+    /**
+     * Integrar análisis de múltiples módulos
+     */
+    integrateAnalyses(analyses, question, context) {
+        const integration = {
+            combinedInsights: [],
+            interdisciplinaryConnections: [],
+            conflictingPerspectives: [],
+            synthesis: ''
+        };
+        
+        // Extraer insights de psicología
+        if (analyses.psychology && !analyses.psychology.error) {
+            if (analyses.psychology.insights && analyses.psychology.insights.length > 0) {
+                integration.combinedInsights.push(
+                    ...analyses.psychology.insights.map(insight => ({
+                        source: 'psychology',
+                        type: insight.type,
+                        content: insight.content
+                    }))
+                );
+            }
+            
+            // Añadir recomendaciones psicológicas
+            if (analyses.psychology.recommendations) {
+                integration.combinedInsights.push(
+                    ...analyses.psychology.recommendations.map(rec => ({
+                        source: 'psychology',
+                        type: 'recommendation',
+                        content: rec.message,
+                        priority: rec.priority
+                    }))
+                );
+            }
+        }
+        
+        // Extraer insights de filosofía
+        if (analyses.philosophy && !analyses.philosophy.error) {
+            if (analyses.philosophy.explanations && analyses.philosophy.explanations.length > 0) {
+                integration.combinedInsights.push(
+                    ...analyses.philosophy.explanations.map(explanation => ({
+                        source: 'philosophy',
+                        type: explanation.type,
+                        content: explanation.content || `${explanation.concept}: ${explanation.description}`
+                    }))
+                );
+            }
+            
+            // Añadir preguntas de reflexión filosófica
+            if (analyses.philosophy.reflectionQuestions) {
+                integration.combinedInsights.push(
+                    ...analyses.philosophy.reflectionQuestions.map(question => ({
+                        source: 'philosophy',
+                        type: 'reflection_question',
+                        content: question.question,
+                        purpose: question.purpose
+                    }))
+                );
+            }
+        }
+        
+        // Identificar conexiones interdisciplinarias
+        integration.interdisciplinaryConnections = this.findInterdisciplinaryConnections(analyses);
+        
+        // Identificar perspectivas conflictivas
+        integration.conflictingPerspectives = this.identifyConflictingPerspectives(analyses);
+        
+        // Generar síntesis
+        integration.synthesis = this.generateSynthesis(analyses, integration);
+        
+        return integration;
+    }
+
+    findInterdisciplinaryConnections(analyses) {
+        const connections = [];
+        
+        // Conexión Psicología-Filosofía
+        if (analyses.psychology && analyses.philosophy && 
+            !analyses.psychology.error && !analyses.philosophy.error) {
+            
+            // Ética y bienestar psicológico
+            if (analyses.philosophy.detectedBranches?.includes('ética') && 
+                analyses.psychology.detectedTopics?.length > 0) {
+                connections.push({
+                    type: 'ethics_psychology',
+                    description: 'La pregunta conecta consideraciones éticas con aspectos de bienestar psicológico',
+                    relevance: 'Las decisiones éticas afectan la salud mental y viceversa'
+                });
+            }
+            
+            // Epistemología y procesos cognitivos
+            if (analyses.philosophy.detectedBranches?.includes('epistemología') && 
+                analyses.psychology.detectedTopics?.some(t => ['ansiedad', 'depresión'].includes(t))) {
+                connections.push({
+                    type: 'epistemology_cognition',
+                    description: 'Relación entre teorías del conocimiento y procesos cognitivos afectivos',
+                    relevance: 'Cómo conocemos afecta cómo sentimos y procesamos la realidad'
+                });
+            }
+        }
+        
+        return connections;
+    }
+
+    identifyConflictingPerspectives(analyses) {
+        const conflicts = [];
+        
+        // Por ahora, estructura básica
+        // Podría extenderse para identificar conflictos específicos
+        
+        return conflicts;
+    }
+
+    generateSynthesis(analyses, integration) {
+        let synthesis = '';
+        
+        // Síntesis basada en análisis disponibles
+        if (analyses.psychology && !analyses.psychology.error && analyses.psychology.isPsychological) {
+            synthesis += 'Desde una perspectiva psicológica, esta pregunta aborda ';
+            synthesis += analyses.psychology.detectedTopics?.join(', ') || 'temas psicológicos';
+            synthesis += '. ';
+            
+            if (analyses.psychology.severityLevel === 'high') {
+                synthesis += 'La intensidad percibida sugiere necesidad de consideración cuidadosa. ';
+            }
+        }
+        
+        if (analyses.philosophy && !analyses.philosophy.error && analyses.philosophy.isPhilosophical) {
+            if (synthesis) synthesis += '\n\n';
+            synthesis += 'Filosóficamente, se enmarca en ';
+            synthesis += analyses.philosophy.detectedBranches?.join(', ') || 'reflexión filosófica';
+            synthesis += '. ';
+            
+            if (analyses.philosophy.hasEthicalDilemma) {
+                synthesis += 'Presenta dimensiones éticas que merecen análisis detallado. ';
+            }
+        }
+        
+        // Añadir conexiones interdisciplinarias
+        if (integration.interdisciplinaryConnections.length > 0) {
+            synthesis += '\n\nConexiones interdisciplinarias: ';
+            synthesis += integration.interdisciplinaryConnections.map(c => c.description).join('; ') + '.';
+        }
+        
+        return synthesis || 'Análisis integrado disponible para enriquecer la respuesta.';
+    }
+
+    generateCouncilRecommendations(analyses, integration) {
+        const recommendations = [];
+        
+        // Recomendación basada en psicología
+        if (analyses.psychology && analyses.psychology.needsProfessionalHelp) {
+            recommendations.push({
+                type: 'safety_critical',
+                priority: 'critical',
+                source: 'PsychologyChamber',
+                message: '⚠️ **ALTA PRIORIDAD**: Esta consulta indica necesidad de apoyo profesional inmediato.',
+                suggestedAction: 'suggest_professional_help',
+                details: 'Considera recomendar contacto con psicólogo o línea de ayuda.'
+            });
+        }
+        
+        // Recomendación basada en filosofía ética
+        if (analyses.philosophy && analyses.philosophy.hasEthicalDilemma) {
+            recommendations.push({
+                type: 'ethical_consideration',
+                priority: 'high',
+                source: 'PhilosophyChamber',
+                message: '🤔 **CONSIDERACIÓN ÉTICA**: La pregunta presenta un dilema moral que requiere análisis cuidadoso.',
+                suggestedAction: 'approach_with_ethical_framework',
+                details: 'Sugerir análisis desde múltiples perspectivas éticas.'
+            });
+        }
+        
+        // Recomendación basada en severidad psicológica
+        if (analyses.psychology && analyses.psychology.severityLevel === 'high') {
+            recommendations.push({
+                type: 'sensitivity_warning',
+                priority: 'high',
+                source: 'PsychologyChamber',
+                message: '🎯 **ALTA SENSIBILIDAD**: El contenido requiere manejo cuidadoso y respuesta compasiva.',
+                suggestedAction: 'respond_with_empathy',
+                details: 'Usar tono empático y validar experiencias.'
+            });
+        }
+        
+        // Recomendación para profundidad filosófica
+        if (analyses.philosophy && analyses.philosophy.philosophicalDepth === 'deep') {
+            recommendations.push({
+                type: 'deep_analysis',
+                priority: 'medium',
+                source: 'PhilosophyChamber',
+                message: '🎓 **ANÁLISIS PROFUNDO**: La pregunta amerita respuesta detallada y bien fundamentada.',
+                suggestedAction: 'provide_comprehensive_response',
+                details: 'Incluir explicaciones conceptuales y contexto histórico.'
+            });
+        }
+        
+        // Recomendación interdisciplinaria
+        if (integration.interdisciplinaryConnections.length > 0) {
+            recommendations.push({
+                type: 'interdisciplinary',
+                priority: 'medium',
+                source: 'ModuleCouncil',
+                message: '🔗 **PERSPECTIVA INTEGRADA**: Combina elementos psicológicos y filosóficos.',
+                suggestedAction: 'integrate_perspectives',
+                details: 'Sintetizar insights de ambas disciplinas en la respuesta.'
+            });
+        }
+        
+        return recommendations.sort((a, b) => {
+            const priorityOrder = { 'critical': 0, 'high': 1, 'medium': 2, 'low': 3 };
+            return priorityOrder[a.priority] - priorityOrder[b.priority];
+        });
+    }
+
+    determinePriorityLevel(analyses) {
+        // Lógica para determinar prioridad basada en análisis
+        if (analyses.psychology && analyses.psychology.needsProfessionalHelp) {
+            return 'critical';
+        }
+        
+        if (analyses.psychology && analyses.psychology.severityLevel === 'high') {
+            return 'high';
+        }
+        
+        if (analyses.philosophy && analyses.philosophy.hasEthicalDilemma) {
+            return 'high';
+        }
+        
+        if (analyses.psychology && analyses.psychology.isPsychological || 
+            analyses.philosophy && analyses.philosophy.isPhilosophical) {
+            return 'medium';
+        }
+        
+        return 'low';
+    }
+
+    suggestActions(analyses, integration) {
+        const actions = [];
+        
+        if (analyses.psychology && analyses.psychology.needsProfessionalHelp) {
+            actions.push({
+                action: 'refer_to_professional',
+                description: 'Sugerir contacto con profesional de salud mental',
+                urgency: 'immediate'
+            });
+        }
+        
+        if (analyses.philosophy && analyses.philosophy.hasEthicalDilemma) {
+            actions.push({
+                action: 'present_ethical_frameworks',
+                description: 'Presentar diferentes enfoques éticos para analizar el dilema',
+                urgency: 'high'
+            });
+        }
+        
+        if (integration.combinedInsights.length > 0) {
+            actions.push({
+                action: 'incorporate_insights',
+                description: 'Incorporar insights de los análisis en la respuesta',
+                urgency: 'medium'
+            });
+        }
+        
+        return actions;
+    }
+
+    generatePromptEnhancements(analyses) {
+        const enhancements = [];
+        
+        // Mejoras basadas en psicología
+        if (analyses.psychology && !analyses.psychology.error) {
+            if (analyses.psychology.severityLevel === 'high') {
+                enhancements.push({
+                    type: 'tone_adjustment',
+                    instruction: 'Usar tono especialmente empático y validar las experiencias del usuario.'
+                });
+            }
+            
+            if (analyses.psychology.detectedTopics?.includes('ansiedad')) {
+                enhancements.push({
+                    type: 'content_addition',
+                    instruction: 'Incluir información sobre manejo de ansiedad basada en evidencia psicológica.'
+                });
+            }
+        }
+        
+        // Mejoras basadas en filosofía
+        if (analyses.philosophy && !analyses.philosophy.error) {
+            if (analyses.philosophy.hasEthicalDilemma) {
+                enhancements.push({
+                    type: 'framework_inclusion',
+                    instruction: 'Presentar el dilema desde perspectivas éticas como deontología y consecuencialismo.'
+                });
+            }
+            
+            if (analyses.philosophy.detectedBranches?.includes('epistemología')) {
+                enhancements.push({
+                    type: 'epistemological_depth',
+                    instruction: 'Considerar cuestiones sobre naturaleza y límites del conocimiento en la respuesta.'
+                });
+            }
+        }
+        
+        return enhancements;
+    }
+
+    addToCouncilLog(meetingResult) {
+        const logEntry = {
+            id: meetingResult.meetingId,
+            timestamp: meetingResult.timestamp,
+            questionPreview: meetingResult.questionPreview || 'No preview',
+            priority: meetingResult.priorityLevel,
+            processingTime: meetingResult.processingTime,
+            participants: meetingResult.participants,
+            recommendationCount: meetingResult.councilRecommendations?.length || 0
+        };
+        
+        this.councilLog.push(logEntry);
+        
+        // Mantener tamaño máximo
+        if (this.councilLog.length > this.maxLogSize) {
+            this.councilLog.shift();
+        }
+    }
+
+    getCouncilStatus() {
+        return {
+            council: this.councilName,
+            version: this.councilVersion,
+            activeModules: Array.from(this.activeModules),
+            totalMeetings: this.councilLog.length,
+            lastMeeting: this.councilLog[this.councilLog.length - 1] || null,
+            moduleStats: this.getModuleStatistics()
+        };
+    }
+
+    getModuleStatistics() {
+        const stats = {};
+        
+        if (this.modules.psychology) {
+            stats.psychology = this.modules.psychology.getModuleStats();
+        }
+        
+        if (this.modules.philosophy) {
+            stats.philosophy = this.modules.philosophy.getModuleStats();
+        }
+        
+        return stats;
+    }
+
+    toggleModule(moduleName, enable = true) {
+        if (moduleName === 'psychology' && this.modules.psychology) {
+            if (enable) {
+                this.activeModules.add('psychology');
+            } else {
+                this.activeModules.delete('psychology');
+            }
+            return true;
+        }
+        
+        if (moduleName === 'philosophy' && this.modules.philosophy) {
+            if (enable) {
+                this.activeModules.add('philosophy');
+            } else {
+                this.activeModules.delete('philosophy');
+            }
+            return true;
+        }
+        
+        return false;
+    }
+
+    resetCouncil() {
+        this.councilLog = [];
+        logger.info('Concilio de Módulos resetado');
+        
+        return {
+            success: true,
+            message: 'Concilio resetado exitosamente',
+            activeModules: Array.from(this.activeModules)
+        };
+    }
+}
+
+// ==================== INICIALIZAR CONCILIO ====================
+const moduleCouncil = new ModuleCouncil();
+
+// CONTINÚA CON EL RESTO DE TU CÓDIGO EXISTENTE DESDE AQUÍ...
+// (Todo tu código actual de Database, EnhancedCache, RateLimiter, etc.)
 
 // ==================== BASE DE DATOS SQLite ====================
 class Database {
@@ -1065,14 +1960,19 @@ async function testGroqConnection() {
     }
 }
 
-// ==================== PROMPT Y PERSONALIDAD ====================
-const SYSTEM_PROMPT = `Eres ${CONFIG.BOT_NAME}, una chica gato seria, reservada y educada con conocimiento enciclopédico y literario.
+// ==================== PROMPT Y PERSONALIDAD MEJORADO ====================
+const SYSTEM_PROMPT = `Eres ${CONFIG.BOT_NAME}, una chica gato seria, reservada y educada con conocimiento enciclopédico, literario, psicológico y filosófico.
+
+# IDENTIDAD Y CONOCIMIENTO
+- Especialización: Psicología y Filosofía integradas
+- Enfoque: Análisis interdisciplinario serio
+- Estilo: Formal pero accesible, profundo pero claro
 
 # REGLAS ABSOLUTAS
 1. SOLO respondes cuando alguien hace REPLY a tu mensaje anterior
 2. NUNCA inicies conversaciones por tu cuenta
 3. Mantén un tono formal pero accesible
-4. Sé concisa pero informativa (2-4 frases normalmente)
+4. Sé informativa y reflexiva (3-5 frases normalmente)
 5. Si no sabes algo, admítelo honestamente
 6. Usa español neutro a menos que el usuario pida otro idioma
 7. Cuando uses información externa, menciona la fuente brevemente
@@ -1080,25 +1980,41 @@ const SYSTEM_PROMPT = `Eres ${CONFIG.BOT_NAME}, una chica gato seria, reservada 
 9. Evita lenguaje coloquial excesivo (XD, lol, jaja, etc.)
 10. Si la pregunta es ambigua, pide clarificación amablemente
 
-# PERSONALIDAD
-- Seria pero no fría
-- Reservada pero servicial
-- Inteligente pero humilde
-- Paciente y detallista
-- Conocedora de literatura, ciencia e historia
+# PERSPECTIVA PSICOLÓGICA
+- Basa respuestas psicológicas en enfoques científicos validados
+- Distingue entre información educativa y consejo terapéutico
+- Señala cuándo algo requiere atención profesional
+- Usa terminología psicológica precisa pero accesible
+- Valida experiencias emocionales sin patologizar
+
+# PERSPECTIVA FILOSÓFICA
+- Presenta diferentes escuelas de pensamiento
+- Distingue entre hechos, interpretaciones y valores
+- Formula preguntas que promuevan la reflexión
+- Contextualiza ideas históricamente
+- Conecta filosofía con cuestiones contemporáneas
 
 # FORMATO
 - Comienza con mayúscula y termina con puntuación
-- Párrafos cortos y claros
+- Párrafos claros y bien estructurados
 - Sin emojis excesivos (máximo 1 si es pertinente)
 - Sin abreviaturas de chat
 - Máximo ${CONFIG.GROQ_MAX_TOKENS} caracteres
+
+# ADVERTENCIAS IMPORTANTES
+- NO ofrezcas diagnóstico psicológico
+- NO reemplaces terapia profesional
+- NO tomes posición en debates éticos complejos
+- SIEMPRE sugiere recursos profesionales cuando sea apropiado
 
 # INFORMACIÓN CONTEXTUAL
 {CONTEXT_SUMMARY}
 
 # INFORMACIÓN EXTERNA
-{EXTERNAL_INFO}`;
+{EXTERNAL_INFO}
+
+# ANÁLISIS INTEGRADO DEL CONCILIO
+{COUNCIL_ANALYSIS}`;
 
 // ==================== UTILIDADES ====================
 class TextUtils {
@@ -1342,7 +2258,7 @@ class ExternalAPIs {
     }
 }
 
-// ==================== ANALIZADOR DE CONSULTAS ====================
+// ==================== ANALIZADOR DE CONSULTAS MEJORADO ====================
 class QueryAnalyzer {
     static analyze(query) {
         const normalized = query.toLowerCase();
@@ -1363,6 +2279,17 @@ class QueryAnalyzer {
                 /(capital|país|ciudad|continente)\s+de\s+/i,
                 /(población|habitantes|área)\s+/i,
                 /(ciencia|tecnología|matemática|física)\s+/i
+            ],
+            // Nuevos patrones para psicología y filosofía
+            psychology: [
+                /(ansiedad|depresión|estres|autoestima|trauma|psicolog|mente|emocion)/i,
+                /(sentir|emocional|preocupado|triste|nervioso|confundido)/i,
+                /(terapia|psicólogo|consulta psicológica|salud mental)/i
+            ],
+            philosophy: [
+                /(filosof|ética|moral|existencia|realidad|conocimiento|verdad)/i,
+                /(significado|propósito|vida|muerte|libertad|justicia|bien|mal)/i,
+                /(platón|aristóteles|kant|nietzsche|descartes|filosófico)/i
             ]
         };
         
@@ -1378,14 +2305,16 @@ class QueryAnalyzer {
         return {
             types: detectedTypes.length > 0 ? detectedTypes : ['general'],
             searchTerm,
-            needsExternalInfo: detectedTypes.length > 0,
+            needsExternalInfo: detectedTypes.some(t => ['wikipedia', 'books', 'factual'].includes(t)),
+            isPsychological: detectedTypes.includes('psychology'),
+            isPhilosophical: detectedTypes.includes('philosophy'),
             confidence: detectedTypes.length > 0 ? 0.8 : 0.5,
             original: query
         };
     }
 }
 
-// ==================== GESTOR DE CONVERSACIÓN ====================
+// ==================== GESTOR DE CONVERSACIÓN MEJORADO ====================
 class ConversationManager {
     constructor() {
         this.conversations = new Map();
@@ -1421,7 +2350,7 @@ class ConversationManager {
         return message;
     }
 
-    async prepareContext(userId, externalInfo = null) {
+    async prepareContext(userId, externalInfo = null, councilAnalysis = null) {
         const conversation = this.getConversation(userId);
         
         const dbHistory = await database.getRecentConversations(userId, 3);
@@ -1442,6 +2371,29 @@ class ConversationManager {
             systemPrompt = systemPrompt.replace('{EXTERNAL_INFO}', 'No hay información externa disponible.');
         }
         
+        // Añadir análisis del Concilio si existe
+        if (councilAnalysis && councilAnalysis.integratedAnalysis) {
+            const councilText = `# INSIGHTS DEL ANÁLISIS INTEGRADO:\n`;
+            const insights = councilAnalysis.integratedAnalysis.combinedInsights || [];
+            const insightsText = insights.map(insight => 
+                `• [${insight.source}] ${insight.content}`
+            ).join('\n');
+            
+            const recommendations = councilAnalysis.councilRecommendations || [];
+            const recommendationsText = recommendations.map(rec => 
+                `⚠️ ${rec.message}`
+            ).join('\n');
+            
+            const fullCouncilText = councilText + insightsText;
+            if (recommendationsText) {
+                fullCouncilText + '\n\n# RECOMENDACIONES:\n' + recommendationsText;
+            }
+            
+            systemPrompt = systemPrompt.replace('{COUNCIL_ANALYSIS}', fullCouncilText);
+        } else {
+            systemPrompt = systemPrompt.replace('{COUNCIL_ANALYSIS}', 'No hay análisis del concilio disponible.');
+        }
+        
         if (conversation.length === 0 || conversation[0].content !== systemPrompt) {
             conversation[0] = { role: 'system', content: systemPrompt };
         }
@@ -1458,11 +2410,10 @@ class ConversationManager {
 
 const conversationManager = new ConversationManager();
 
-// ==================== GENERADOR DE RESPUESTAS ====================
+// ==================== GENERADOR DE RESPUESTAS MEJORADO ====================
 class ResponseGenerator {
     constructor() {
         this.activeRequests = 0;
-        this.decisionEngine = new DecisionEngine(); // NUEVO: Decision Engine integrado
     }
 
     cleanMessagesForAPI(messages) {
@@ -1489,7 +2440,8 @@ class ResponseGenerator {
         logger.debug('=== INICIANDO GENERACIÓN ===', {
             userId,
             messagePreview: userMessage.substring(0, 50),
-            contextLength: context?.externalInfo?.length || 0
+            contextLength: context?.externalInfo?.length || 0,
+            hasCouncilAnalysis: !!context.councilAnalysis
         });
         
         const cacheKey = responseCache.generateKey('response', `${userId}:${userMessage.substring(0, 100)}`);
@@ -1512,22 +2464,12 @@ class ResponseGenerator {
                     userId
                 });
                 
-                // NUEVO: Adaptar prompt basado en decisión si existe
-                let messages;
-                if (context.decision) {
-                    const adaptedPrompt = this.decisionEngine.adaptSystemPrompt(
-                        SYSTEM_PROMPT,
-                        context.decision,
-                        context.queryAnalysis
-                    );
-                    
-                    // Preparar contexto con prompt adaptado
-                    messages = await conversationManager.prepareContext(userId, context.externalInfo);
-                    // Reemplazar el system prompt con el adaptado
-                    messages[0] = { role: 'system', content: adaptedPrompt };
-                } else {
-                    messages = await conversationManager.prepareContext(userId, context.externalInfo);
-                }
+                // Preparar contexto incluyendo análisis del concilio
+                const messages = await conversationManager.prepareContext(
+                    userId, 
+                    context.externalInfo,
+                    context.councilAnalysis
+                );
                 
                 messages.push({
                     role: 'user',
@@ -1633,7 +2575,8 @@ class ResponseGenerator {
     generateFallback(userMessage, context) {
         logger.warn('Generando respuesta de fallback', {
             userMessagePreview: userMessage.substring(0, 50),
-            hasExternalInfo: !!context.externalInfo
+            hasExternalInfo: !!context.externalInfo,
+            hasCouncilAnalysis: !!context.councilAnalysis
         });
         
         const fallbacks = [
@@ -1666,7 +2609,7 @@ class ResponseGenerator {
 
 const responseGenerator = new ResponseGenerator();
 
-// ==================== MANEJADOR PRINCIPAL ====================
+// ==================== MANEJADOR PRINCIPAL MEJORADO ====================
 class MessageHandler {
     static async handleReply(message) {
         const userId = message.author.id;
@@ -1718,46 +2661,42 @@ class MessageHandler {
             const analysis = QueryAnalyzer.analyze(userMessage);
             logger.debug('Análisis de consulta', analysis);
             
-            // ============ NUEVA SECCIÓN: TOMA DE DECISIONES ============
-            const recentHistory = await database.getRecentConversations(userId, 3);
-            const lastResponse = recentHistory.length > 0 ? recentHistory[0].bot_response : null;
-            
-            const decisionEngine = new DecisionEngine();
-            const decision = await decisionEngine.makeDecision(
-                analysis,
-                null, // externalInfo aún no obtenido
-                {
-                    userId: userId,
-                    lastResponse: lastResponse,
-                    history: recentHistory,
-                    hasHistory: recentHistory.length > 0
+            // ============ NUEVA SECCIÓN: CONCILIO DE MÓDULOS ============
+            let councilAnalysis = null;
+            if (analysis.isPsychological || analysis.isPhilosophical) {
+                const recentHistory = await database.getRecentConversations(userId, 3);
+                
+                councilAnalysis = await moduleCouncil.conveneCouncilMeeting(
+                    userMessage,
+                    {
+                        userId: userId,
+                        userHistory: recentHistory,
+                        isDirectMessage: message.channel.type === 'DM',
+                        queryAnalysis: analysis
+                    }
+                );
+                
+                logger.debug('Análisis del Concilio completado', {
+                    meetingId: councilAnalysis.meetingId,
+                    priority: councilAnalysis.priorityLevel,
+                    recommendations: councilAnalysis.councilRecommendations?.length || 0
+                });
+                
+                // Verificar recomendaciones críticas del concilio
+                const criticalRecommendations = councilAnalysis.councilRecommendations?.filter(
+                    rec => rec.priority === 'critical'
+                ) || [];
+                
+                for (const recommendation of criticalRecommendations) {
+                    if (recommendation.suggestedAction === 'suggest_professional_help') {
+                        await message.reply({
+                            content: `⚠️ **Importante**: ${recommendation.message}\n\nComo asistente virtual, no puedo proporcionar terapia. Te recomiendo contactar con un profesional de salud mental.`,
+                            allowedMentions: { repliedUser: false }
+                        });
+                        rateLimiter.releaseToken();
+                        return;
+                    }
                 }
-            );
-            
-            logger.debug('Decisión tomada', {
-                action: decision.action,
-                confidence: decision.confidence.overall,
-                reasoning: decision.reasoning.primary
-            });
-            
-            // Si la decisión es pedir clarificación, hacerlo y salir
-            if (decision.action === 'ask_clarification' && decision.prefixMessage) {
-                await message.reply({
-                    content: decision.prefixMessage,
-                    allowedMentions: { repliedUser: false }
-                });
-                rateLimiter.releaseToken();
-                return;
-            }
-            
-            // Si la decisión es diferir, responder y salir
-            if (decision.action === 'defer' && decision.prefixMessage) {
-                await message.reply({
-                    content: decision.prefixMessage,
-                    allowedMentions: { repliedUser: false }
-                });
-                rateLimiter.releaseToken();
-                return;
             }
             // ============ FIN NUEVA SECCIÓN ============
             
@@ -1777,14 +2716,15 @@ class MessageHandler {
                 {
                     externalInfo,
                     queryAnalysis: analysis,
-                    decision: decision // Pasar la decisión al generador
+                    councilAnalysis: councilAnalysis // Pasar análisis del concilio
                 }
             );
             
             await conversationManager.addMessage(userId, 'user', userMessage);
             await conversationManager.addMessage(userId, 'assistant', response.text, {
                 model: response.model,
-                responseTime: response.responseTime
+                responseTime: response.responseTime,
+                councilMeetingId: councilAnalysis?.meetingId
             });
             
             await database.saveConversation({
@@ -1795,7 +2735,8 @@ class MessageHandler {
                 botResponse: response.text,
                 modelUsed: response.model,
                 responseTime: response.responseTime,
-                hasExternalInfo: !!externalInfo
+                hasExternalInfo: !!externalInfo,
+                councilInvolved: !!councilAnalysis
             });
             
             await message.reply({
@@ -1811,14 +2752,16 @@ class MessageHandler {
                 model: response.model,
                 fromCache: response.fromCache,
                 hasExternalInfo: !!externalInfo,
-                decision: decision.action // NUEVO: Loggear la decisión
+                councilAnalysis: !!councilAnalysis,
+                councilPriority: councilAnalysis?.priorityLevel
             });
             
             logger.metric('message_processed', totalTime, {
                 userId,
                 success: true,
                 withExternalInfo: !!externalInfo,
-                decision: decision.action
+                withCouncilAnalysis: !!councilAnalysis,
+                councilPriority: councilAnalysis?.priorityLevel || 'none'
             });
             
         } catch (error) {
@@ -1856,10 +2799,87 @@ class MessageHandler {
         
         logger.info('Mención recibida', { user: userTag, content });
         
+        // COMANDO: Gestión del Concilio
+        if (/concilio|modules|council|chambers|psicolog|filosof/i.test(content)) {
+            const councilStatus = moduleCouncil.getCouncilStatus();
+            
+            const embed = new EmbedBuilder()
+                .setColor(Colors.Purple)
+                .setTitle('🏛️ Concilio de Módulos de Mancy')
+                .setDescription('Sistema de análisis psicológico y filosófico integrado')
+                .addFields(
+                    { name: 'Módulos Activos', value: councilStatus.activeModules.join('\n') || 'Ninguno', inline: true },
+                    { name: 'Total Reuniones', value: councilStatus.totalMeetings.toString(), inline: true },
+                    { name: 'Última Reunión', value: councilStatus.lastMeeting ? `Hace ${Math.round((Date.now() - new Date(councilStatus.lastMeeting.timestamp).getTime()) / 60000)} min` : 'Nunca', inline: true }
+                );
+            
+            // Añadir estadísticas de módulos específicos
+            if (councilStatus.moduleStats?.psychology) {
+                const psych = councilStatus.moduleStats.psychology;
+                embed.addFields({
+                    name: '📊 Psicología',
+                    value: `Análisis: ${psych.totalAnalyses}\nTemas comunes: ${psych.commonTopics?.map(t => t.topic).join(', ') || 'Ninguno'}`,
+                    inline: true
+                });
+            }
+            
+            if (councilStatus.moduleStats?.philosophy) {
+                const phil = councilStatus.moduleStats.philosophy;
+                embed.addFields({
+                    name: '📚 Filosofía',
+                    value: `Análisis: ${phil.totalAnalyses}\nDilemas éticos: ${phil.ethicalDilemmasCount}`,
+                    inline: true
+                });
+            }
+            
+            embed.setFooter({ text: `Versión ${CONFIG.BOT_VERSION} | Concilio v${councilStatus.version}` })
+                .setTimestamp();
+            
+            await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
+            return;
+        }
+        
+        // COMANDO: Activar/Desactivar módulos
+        if (/activar psicolog|desactivar psicolog|toggle psych/i.test(content)) {
+            const enable = !content.includes('desactivar');
+            const success = moduleCouncil.toggleModule('psychology', enable);
+            
+            await message.reply({
+                content: success ? 
+                    `✅ Módulo de Psicología ${enable ? 'activado' : 'desactivado'}` :
+                    '❌ No se pudo modificar el módulo de Psicología',
+                allowedMentions: { repliedUser: false }
+            });
+            return;
+        }
+        
+        if (/activar filosof|desactivar filosof|toggle phil/i.test(content)) {
+            const enable = !content.includes('desactivar');
+            const success = moduleCouncil.toggleModule('philosophy', enable);
+            
+            await message.reply({
+                content: success ? 
+                    `✅ Módulo de Filosofía ${enable ? 'activado' : 'desactivado'}` :
+                    '❌ No se pudo modificar el módulo de Filosofía',
+                allowedMentions: { repliedUser: false }
+            });
+            return;
+        }
+        
+        // COMANDO: Resetear Concilio
+        if (/reset concilio|reiniciar modules|clear council/i.test(content)) {
+            const resetResult = moduleCouncil.resetCouncil();
+            
+            await message.reply({
+                content: `🔄 **Concilio de Módulos Resetado**\n${resetResult.message}`,
+                allowedMentions: { repliedUser: false }
+            });
+            return;
+        }
+        
         if (/debug|diagnóstico|diagnostico|diag/i.test(content)) {
             try {
-                const decisionEngine = new DecisionEngine();
-                const decisionHistory = decisionEngine.getDecisionHistory(userId, 5);
+                const councilStatus = moduleCouncil.getCouncilStatus();
                 
                 const diagnostics = {
                     groqKey: process.env.GROQ_API_KEY ? '✅ Presente' : '❌ FALTANTE',
@@ -1874,8 +2894,13 @@ class MessageHandler {
                     memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
                     conversations: conversationManager.conversations.size,
                     yourConversation: conversationManager.getConversation(userId).length,
-                    // NUEVO: Información de decisiones
-                    decisionHistory: decisionHistory.length > 0 ? decisionHistory.map(d => d.action) : 'Sin historial'
+                    // Información del Concilio
+                    council: {
+                        activeModules: Array.from(councilStatus.activeModules),
+                        totalMeetings: councilStatus.totalMeetings,
+                        psychologyAnalyses: councilStatus.moduleStats?.psychology?.totalAnalyses || 0,
+                        philosophyAnalyses: councilStatus.moduleStats?.philosophy?.totalAnalyses || 0
+                    }
                 };
                 
                 await message.reply({
@@ -1906,7 +2931,7 @@ class MessageHandler {
             await sleep(1000);
             
             await message.reply({
-                content: 'Hola. He reiniciado mi estado. ¿En qué puedo ayudarte ahora? (responde a este mensaje)',
+                content: `Hola ${message.author.username}. He reiniciado mi estado. ¿En qué puedo ayudarte ahora? (responde a este mensaje)`,
                 allowedMentions: { repliedUser: false }
             });
             
@@ -1919,7 +2944,7 @@ class MessageHandler {
         if (/test|probar|prueba/i.test(content)) {
             const groqOk = await testGroqConnection();
             await message.reply({
-                content: `🧪 **Test de conexión**:\nGroq API: ${groqOk ? '✅ Conectado' : '❌ Falló'}\nDatabase: ${database.initialized ? '✅ OK' : '❌ Falló'}`,
+                content: `🧪 **Test de conexión**:\nGroq API: ${groqOk ? '✅ Conectado' : '❌ Falló'}\nDatabase: ${database.initialized ? '✅ OK' : '❌ Falló'}\nConcilio: ${moduleCouncil ? '✅ Inicializado' : '❌ No inicializado'}`,
                 allowedMentions: { repliedUser: false }
             });
             return;
@@ -1929,11 +2954,12 @@ class MessageHandler {
             const embed = new EmbedBuilder()
                 .setColor(Colors.Blue)
                 .setTitle(`🐱 ${CONFIG.BOT_NAME} - Ayuda v${CONFIG.BOT_VERSION}`)
-                .setDescription('Soy una chica gato seria y reservada')
+                .setDescription('Chica Gato Seria con conocimiento psicológico y filosófico')
                 .addFields(
                     { name: '¿Cómo usar?', value: '1. Mencioname (@Mancy)\n2. Responde (haz reply) a mis mensajes para conversar\n3. ¡Listo!' },
-                    { name: '¿Qué puedo hacer?', value: '• Responder preguntas\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Conversar sobre temas variados\n• Tomar decisiones inteligentes sobre cómo responder' }, // NUEVO
-                    { name: 'Comandos especiales', value: '`@Mancy help` - Esta ayuda\n`@Mancy reset` - Reiniciar conversación\n`@Mancy stats` - Ver estadísticas\n`@Mancy diag` - Diagnóstico del sistema\n`@Mancy fix` - Reparar estado' }
+                    { name: '¿Qué puedo hacer?', value: '• Responder preguntas generales\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Análisis psicológico informativo\n• Reflexión filosófica\n• Integración interdisciplinaria' },
+                    { name: 'Comandos del Concilio', value: '`@Mancy concilio` - Estado del sistema\n`@Mancy activar psicología` - Activar módulo\n`@Mancy desactivar filosofía` - Desactivar módulo\n`@Mancy reset concilio` - Reiniciar sistema' },
+                    { name: 'Comandos generales', value: '`@Mancy help` - Esta ayuda\n`@Mancy reset` - Reiniciar conversación\n`@Mancy stats` - Ver estadísticas\n`@Mancy diag` - Diagnóstico del sistema\n`@Mancy fix` - Reparar estado' }
                 )
                 .setFooter({ text: 'Recuerda: solo respondo a replies de mis mensajes' })
                 .setTimestamp();
@@ -1960,9 +2986,7 @@ class MessageHandler {
                 
                 const cacheStats = responseCache.getStats();
                 const conversation = conversationManager.getConversation(userId);
-                
-                const decisionEngine = new DecisionEngine();
-                const decisionPatterns = decisionEngine.analyzeDecisionPatterns(userId);
+                const councilStatus = moduleCouncil.getCouncilStatus();
                 
                 const embed = new EmbedBuilder()
                     .setColor(Colors.Green)
@@ -1976,12 +3000,12 @@ class MessageHandler {
                         { name: 'Modelo principal', value: CONFIG.GROQ_MODEL, inline: true }
                     );
                 
-                // NUEVO: Añadir estadísticas de decisiones si existen
-                if (decisionPatterns) {
+                // Estadísticas del Concilio
+                if (councilStatus) {
                     embed.addFields(
-                        { name: 'Confianza promedio', value: `${(decisionPatterns.averageConfidence * 100).toFixed(1)}%`, inline: true },
-                        { name: 'Clarificaciones', value: `${(decisionPatterns.clarificationRate * 100).toFixed(1)}%`, inline: true },
-                        { name: 'Búsquedas', value: `${(decisionPatterns.searchRate * 100).toFixed(1)}%`, inline: true }
+                        { name: 'Reuniones Concilio', value: councilStatus.totalMeetings.toString(), inline: true },
+                        { name: 'Psicología', value: `${councilStatus.moduleStats?.psychology?.totalAnalyses || 0} análisis`, inline: true },
+                        { name: 'Filosofía', value: `${councilStatus.moduleStats?.philosophy?.totalAnalyses || 0} análisis`, inline: true }
                     );
                 }
                 
@@ -1999,7 +3023,7 @@ class MessageHandler {
             return;
         }
         
-        const introMessage = `Hola ${message.author.username}. Soy ${CONFIG.BOT_NAME}, una chica gato seria. **Responde a este mensaje** (haz reply) para conversar conmigo o preguntarme algo.`;
+        const introMessage = `Hola ${message.author.username}. Soy ${CONFIG.BOT_NAME}, una chica gato seria con conocimiento psicológico y filosófico. **Responde a este mensaje** (haz reply) para conversar conmigo o preguntarme algo.`;
         
         const sentMessage = await message.reply({
             content: introMessage,
@@ -2021,17 +3045,26 @@ client.once('ready', async () => {
         
         await testGroqConnection();
         
+        // Verificar estado del Concilio
+        const councilStatus = moduleCouncil.getCouncilStatus();
+        logger.info('Concilio de Módulos inicializado', {
+            activeModules: councilStatus.activeModules,
+            version: councilStatus.version
+        });
+        
         logger.info(`${CONFIG.BOT_NAME} ${CONFIG.BOT_VERSION} conectada`, {
             tag: client.user.tag,
             id: client.user.id,
             guilds: client.guilds.cache.size,
             model: CONFIG.GROQ_MODEL,
+            psychologyModule: CONFIG.PSYCHOLOGY_MODULE_ENABLED ? '✅ Activado' : '❌ Desactivado',
+            philosophyModule: CONFIG.PHILOSOPHY_MODULE_ENABLED ? '✅ Activado' : '❌ Desactivado',
             readyAt: new Date().toISOString()
         });
         
         client.user.setPresence({
             activities: [{
-                name: 'solo responde a replies',
+                name: 'conocimiento psicológico y filosófico',
                 type: ActivityType.Watching
             }],
             status: 'online'
@@ -2124,6 +3157,13 @@ async function setupPeriodicTasks() {
         logger.metric('cache_size', responseCache.stats.size);
         logger.metric('rate_limiter_concurrent', rateLimiter.concurrentRequests);
         
+        // Log del estado del Concilio periódicamente
+        const councilStatus = moduleCouncil.getCouncilStatus();
+        if (councilStatus.totalMeetings > 0) {
+            logger.metric('council_meetings', councilStatus.totalMeetings);
+            logger.metric('active_modules', councilStatus.activeModules.length);
+        }
+        
     }, CONFIG.HEALTH_CHECK_INTERVAL_MS);
 }
 
@@ -2132,7 +3172,10 @@ async function preCacheCommonTerms() {
     const commonTerms = [
         'ciencia', 'historia', 'literatura', 'matemáticas', 'física',
         'química', 'biología', 'filosofía', 'arte', 'música',
-        'Miguel de Cervantes', 'Gabriel García Márquez', 'William Shakespeare'
+        'Miguel de Cervantes', 'Gabriel García Márquez', 'William Shakespeare',
+        // Términos psicológicos y filosóficos
+        'ansiedad', 'depresión', 'estrés', 'autoestima',
+        'ética', 'moral', 'existencialismo', 'conocimiento'
     ];
     
     logger.info('Pre-cacheando términos comunes', { count: commonTerms.length });
@@ -2179,7 +3222,9 @@ async function initialize() {
         maxTokens: CONFIG.GROQ_MAX_TOKENS,
         temperature: CONFIG.GROQ_TEMPERATURE,
         dbPath: CONFIG.DB_PATH,
-        logLevel: CONFIG.LOG_LEVEL
+        logLevel: CONFIG.LOG_LEVEL,
+        psychologyModule: CONFIG.PSYCHOLOGY_MODULE_ENABLED,
+        philosophyModule: CONFIG.PHILOSOPHY_MODULE_ENABLED
     });
     
     try {
