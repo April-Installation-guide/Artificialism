@@ -112,6 +112,584 @@ class Logger {
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
+// ==================== MÓDULOS DE DECISIÓN INTEGRADOS ====================
+
+// 1. CONFIDENCE SCORER
+class ConfidenceScorer {
+    constructor() {
+        this.weights = {
+            questionClarity: 0.25,
+            informationAvailability: 0.30,
+            contextRelevance: 0.20,
+            historicalAccuracy: 0.15,
+            responseQuality: 0.10
+        };
+    }
+
+    calculateConfidence(queryAnalysis, externalInfo, context) {
+        const scores = {};
+        
+        scores.questionClarity = this.scoreQuestionClarity(queryAnalysis.original);
+        scores.informationAvailability = this.scoreInformationAvailability(externalInfo, queryAnalysis);
+        scores.contextRelevance = this.scoreContextRelevance(context, queryAnalysis);
+        scores.historicalAccuracy = this.scoreHistoricalAccuracy(context?.history);
+        scores.responseQuality = this.scoreResponseQuality(queryAnalysis, externalInfo);
+        
+        let totalScore = 0;
+        let totalWeight = 0;
+        
+        for (const [factor, weight] of Object.entries(this.weights)) {
+            if (scores[factor] !== undefined) {
+                totalScore += scores[factor] * weight;
+                totalWeight += weight;
+            }
+        }
+        
+        const finalScore = totalWeight > 0 ? totalScore / totalWeight : 0.5;
+        
+        return {
+            score: finalScore,
+            breakdown: scores,
+            level: this.getConfidenceLevel(finalScore),
+            shouldProceed: finalScore >= 0.4,
+            needsClarification: scores.questionClarity < 0.3
+        };
+    }
+
+    scoreQuestionClarity(question) {
+        let score = 0.5;
+        
+        if (question.length > 10 && question.length < 200) score += 0.2;
+        if (question.includes('?')) score += 0.1;
+        if (question.trim().split(/\s+/).length > 3) score += 0.1;
+        
+        if (question.length < 5) score -= 0.3;
+        if (question.length > 300) score -= 0.2;
+        if (/^\s*[.!¿?]+\s*$/.test(question)) score = 0.1;
+        
+        const vaguePatterns = [
+            /^(qué|quién|cómo|dónde|cuándo)\s*$/i,
+            /explícame$/i,
+            /dime$/i,
+            /habla\s+(de|sobre)$/i
+        ];
+        
+        if (vaguePatterns.some(pattern => pattern.test(question.trim()))) {
+            score -= 0.4;
+        }
+        
+        return Math.max(0.1, Math.min(1, score));
+    }
+
+    scoreInformationAvailability(externalInfo, queryAnalysis) {
+        if (!externalInfo || externalInfo.length === 0) {
+            if (queryAnalysis.needsExternalInfo) {
+                return 0.2;
+            }
+            return 0.6;
+        }
+        
+        let score = 0.7;
+        const hasWikipedia = externalInfo.some(info => info.source === 'Wikipedia');
+        const hasBooks = externalInfo.some(info => info.source === 'OpenLibrary');
+        
+        if (hasWikipedia) score += 0.2;
+        if (hasBooks && queryAnalysis.types.includes('books')) score += 0.1;
+        if (externalInfo.length >= 2) score += 0.1;
+        
+        return Math.min(1, score);
+    }
+
+    scoreContextRelevance(context, queryAnalysis) {
+        if (!context || !context.lastResponse) {
+            return 0.5;
+        }
+        
+        const lastResponse = context.lastResponse.toLowerCase();
+        const currentQuestion = queryAnalysis.original.toLowerCase();
+        
+        let relevance = 0.3;
+        
+        const topics = this.extractTopics(lastResponse);
+        const questionTopics = this.extractTopics(currentQuestion);
+        
+        const matchingTopics = topics.filter(topic => 
+            questionTopics.some(qt => qt.includes(topic) || topic.includes(qt))
+        );
+        
+        if (matchingTopics.length > 0) {
+            relevance += 0.4;
+        }
+        
+        const followUpIndicators = [
+            'pero', 'sin embargo', 'aunque', 'además',
+            'y qué', 'y cómo', 'y por qué', 'y cuándo',
+            'entonces', 'también', 'por otro lado'
+        ];
+        
+        const isFollowUp = followUpIndicators.some(indicator => 
+            currentQuestion.includes(indicator)
+        );
+        
+        if (isFollowUp) {
+            relevance += 0.3;
+        }
+        
+        return Math.min(1, relevance);
+    }
+
+    extractTopics(text) {
+        const words = text.toLowerCase()
+            .replace(/[^\w\sáéíóúñ]/gi, ' ')
+            .split(/\s+/)
+            .filter(word => word.length > 4);
+        
+        const stopWords = new Set(['sobre', 'acerca', 'decir', 'puedes', 'podrías', 'quiero', 'saber']);
+        return words.filter(word => !stopWords.has(word)).slice(0, 5);
+    }
+
+    scoreHistoricalAccuracy(history) {
+        if (!history || history.length === 0) return 0.5;
+        return 0.7;
+    }
+
+    scoreResponseQuality(queryAnalysis, externalInfo) {
+        let score = 0.5;
+        
+        const wellStructured = queryAnalysis.original.match(/\w+.*\?/);
+        if (wellStructured) score += 0.2;
+        
+        if (externalInfo && externalInfo.length > 0) {
+            const hasGoodContent = externalInfo.some(info => 
+                info.content && info.content.length > 50
+            );
+            if (hasGoodContent) score += 0.3;
+        }
+        
+        const sensitive = [
+            /polític(a|o)/i, /religi(ón|oso)/i,
+            /sexo/i, /droga/i, /violencia/i,
+            /opinión personal/i, /qué piensas/i
+        ];
+        
+        if (!sensitive.some(pattern => pattern.test(queryAnalysis.original))) {
+            score += 0.1;
+        }
+        
+        return Math.min(1, score);
+    }
+
+    getConfidenceLevel(score) {
+        if (score >= 0.8) return 'high';
+        if (score >= 0.6) return 'medium';
+        if (score >= 0.4) return 'low';
+        return 'very_low';
+    }
+
+    generateExplanation(confidenceResult) {
+        const { level, needsClarification } = confidenceResult;
+        
+        if (needsClarification) {
+            return "Parece que tu pregunta es un poco vaga. ¿Podrías especificar más?";
+        }
+        
+        if (level === 'very_low') {
+            return "No estoy segura de poder responder eso adecuadamente.";
+        }
+        
+        if (level === 'low') {
+            return "Intentaré responder, pero puede que no tenga toda la información.";
+        }
+        
+        if (level === 'medium') {
+            return "Creo que puedo darte una respuesta útil.";
+        }
+        
+        return "Estoy bastante segura de esta respuesta.";
+    }
+}
+
+// 2. ACTION SELECTOR
+class ActionSelector {
+    constructor() {
+        this.actions = {
+            DIRECT_RESPONSE: 'direct_response',
+            SEARCH_EXTERNAL: 'search_external',
+            ASK_CLARIFICATION: 'ask_clarification',
+            DEFER: 'defer',
+            ANALYZE_DEEPLY: 'analyze_deeply',
+            GIVE_OPTIONS: 'give_options',
+            NEUTRAL_RESPONSE: 'neutral_response'
+        };
+        
+        this.rules = [
+            {
+                condition: (confidence, analysis) => confidence.score < 0.3,
+                action: this.actions.ASK_CLARIFICATION,
+                priority: 1.0
+            },
+            {
+                condition: (confidence, analysis) => analysis.needsExternalInfo,
+                action: this.actions.SEARCH_EXTERNAL,
+                priority: 0.9
+            },
+            {
+                condition: (confidence, analysis) => this.isSensitiveTopic(analysis.original),
+                action: this.actions.NEUTRAL_RESPONSE,
+                priority: 0.85
+            },
+            {
+                condition: (confidence, analysis) => this.isComplexQuestion(analysis.original),
+                action: this.actions.ANALYZE_DEEPLY,
+                priority: 0.8
+            },
+            {
+                condition: (confidence, analysis) => this.hasMultipleInterpretations(analysis.original),
+                action: this.actions.GIVE_OPTIONS,
+                priority: 0.75
+            },
+            {
+                condition: (confidence, analysis) => confidence.score >= 0.7,
+                action: this.actions.DIRECT_RESPONSE,
+                priority: 0.7
+            },
+            {
+                condition: (confidence, analysis) => confidence.score >= 0.5 && confidence.score < 0.7,
+                action: this.actions.DIRECT_RESPONSE,
+                priority: 0.6
+            },
+            {
+                condition: (confidence, analysis) => confidence.score < 0.4 && !analysis.needsExternalInfo,
+                action: this.actions.DEFER,
+                priority: 0.5
+            }
+        ];
+    }
+
+    selectAction(confidenceScore, queryAnalysis, context = {}) {
+        const applicableRules = [];
+        
+        for (const rule of this.rules) {
+            if (rule.condition(confidenceScore, queryAnalysis, context)) {
+                applicableRules.push({
+                    action: rule.action,
+                    priority: rule.priority,
+                    reason: this.getRuleReason(rule, queryAnalysis)
+                });
+            }
+        }
+        
+        applicableRules.sort((a, b) => b.priority - a.priority);
+        
+        if (applicableRules.length === 0) {
+            return this.getDefaultAction();
+        }
+        
+        const selectedRule = applicableRules[0];
+        
+        return {
+            action: selectedRule.action,
+            priority: selectedRule.priority,
+            reason: selectedRule.reason,
+            alternatives: applicableRules.slice(1, 3).map(r => r.action),
+            confidence: confidenceScore.score
+        };
+    }
+
+    isSensitiveTopic(question) {
+        const sensitivePatterns = [
+            /opinas sobre/i,
+            /qué piensas de/i,
+            /estás de acuerdo/i,
+            /polític(a|o)/i,
+            /religi(ón|oso)/i,
+            /sexo/i,
+            /dinero.*personal/i
+        ];
+        
+        return sensitivePatterns.some(pattern => pattern.test(question.toLowerCase()));
+    }
+
+    isComplexQuestion(question) {
+        const complexityIndicators = [
+            /explica.*detalladamente/i,
+            /comparar.*y.*/i,
+            /ventajas.*desventajas/i,
+            /causas.*consecuencias/i,
+            /analizar.*/i,
+            /múltiples.*factores/i
+        ];
+        
+        const wordCount = question.split(/\s+/).length;
+        const hasMultipleQuestions = (question.match(/\?/g) || []).length > 1;
+        
+        return complexityIndicators.some(pattern => pattern.test(question)) ||
+               (wordCount > 25 && hasMultipleQuestions);
+    }
+
+    hasMultipleInterpretations(question) {
+        const ambiguousPatterns = [
+            /puede.*significar/i,
+            /depende.*/i,
+            /por un lado.*por otro/i,
+            /algunos.*otros/i,
+            /tal vez.*o quizás/i
+        ];
+        
+        const connectors = (question.match(/ o | y | pero | aunque /gi) || []).length;
+        
+        return ambiguousPatterns.some(pattern => pattern.test(question)) || connectors >= 2;
+    }
+
+    getRuleReason(rule, analysis) {
+        const reasons = {
+            [this.actions.ASK_CLARIFICATION]: 'Pregunta demasiado vaga o ambigua',
+            [this.actions.SEARCH_EXTERNAL]: 'Necesita información factual verificable',
+            [this.actions.NEUTRAL_RESPONSE]: 'Tema sensible que requiere neutralidad',
+            [this.actions.ANALYZE_DEEPLY]: 'Pregunta compleja que requiere análisis detallado',
+            [this.actions.GIVE_OPTIONS]: 'Múltiples interpretaciones posibles',
+            [this.actions.DEFER]: 'Confianza insuficiente para responder adecuadamente',
+            [this.actions.DIRECT_RESPONSE]: 'Pregunta clara con información suficiente'
+        };
+        
+        return reasons[rule.action] || 'Acción estándar seleccionada';
+    }
+
+    getDefaultAction() {
+        return {
+            action: this.actions.DIRECT_RESPONSE,
+            priority: 0.5,
+            reason: 'Acción por defecto',
+            alternatives: [],
+            confidence: 0.5
+        };
+    }
+
+    getActionInstructions(action) {
+        const instructions = {
+            [this.actions.DIRECT_RESPONSE]: {
+                tone: 'direct',
+                length: 'normal',
+                includeSources: false,
+                disclaimer: false
+            },
+            [this.actions.SEARCH_EXTERNAL]: {
+                tone: 'informative',
+                length: 'detailed',
+                includeSources: true,
+                disclaimer: false
+            },
+            [this.actions.ASK_CLARIFICATION]: {
+                tone: 'curious',
+                length: 'brief',
+                includeSources: false,
+                disclaimer: true
+            },
+            [this.actions.DEFER]: {
+                tone: 'humble',
+                length: 'brief',
+                includeSources: false,
+                disclaimer: true
+            },
+            [this.actions.ANALYZE_DEEPLY]: {
+                tone: 'analytical',
+                length: 'detailed',
+                includeSources: true,
+                disclaimer: true
+            },
+            [this.actions.GIVE_OPTIONS]: {
+                tone: 'exploratory',
+                length: 'moderate',
+                includeSources: false,
+                disclaimer: true
+            },
+            [this.actions.NEUTRAL_RESPONSE]: {
+                tone: 'neutral',
+                length: 'moderate',
+                includeSources: true,
+                disclaimer: true
+            }
+        };
+        
+        return instructions[action] || instructions[this.actions.DIRECT_RESPONSE];
+    }
+
+    getActionMessage(action, question) {
+        const messages = {
+            [this.actions.ASK_CLARIFICATION]: [
+                `"${question}" - Podrías especificar un poco más lo que buscas?`,
+                `Interesante pregunta. Para responderte mejor, ¿podrías dar más detalles?`,
+                `Hmm, esa pregunta puede interpretarse de varias formas. ¿A qué aspecto te refieres exactamente?`
+            ],
+            [this.actions.DEFER]: [
+                `Sobre "${question}", prefiero ser cuidadosa. No tengo suficiente confianza para darte una respuesta adecuada.`,
+                `Esa es una pregunta interesante, pero creo que necesitaría más información para responderte bien.`,
+                `Como chica gato seria, prefiero admitir cuando no estoy completamente segura. ¿Quizás otra pregunta?`
+            ],
+            [this.actions.NEUTRAL_RESPONSE]: [
+                `Sobre ese tema, puedo compartir información objetiva:`,
+                `Como asistente, me limito a proporcionar información factual sobre eso:`,
+                `Hay diferentes perspectivas al respecto. Te comparto lo que sé:`
+            ]
+        };
+        
+        const actionMessages = messages[action];
+        if (actionMessages) {
+            return actionMessages[Math.floor(Math.random() * actionMessages.length)];
+        }
+        
+        return null;
+    }
+}
+
+// 3. DECISION ENGINE
+class DecisionEngine {
+    constructor() {
+        this.confidenceScorer = new ConfidenceScorer();
+        this.actionSelector = new ActionSelector();
+        this.decisionHistory = new Map();
+        this.maxHistoryPerUser = 10;
+    }
+
+    async makeDecision(queryAnalysis, externalInfo, context = {}) {
+        const startTime = Date.now();
+        
+        const confidence = this.confidenceScorer.calculateConfidence(
+            queryAnalysis, 
+            externalInfo, 
+            context
+        );
+        
+        const action = this.actionSelector.selectAction(
+            confidence, 
+            queryAnalysis, 
+            context
+        );
+        
+        const decision = {
+            action: action.action,
+            confidence: {
+                overall: confidence.score,
+                level: confidence.level,
+                breakdown: confidence.breakdown
+            },
+            reasoning: {
+                primary: action.reason,
+                confidenceExplanation: this.confidenceScorer.generateExplanation(confidence),
+                actionExplanation: this.getActionExplanation(action)
+            },
+            instructions: this.actionSelector.getActionInstructions(action.action),
+            metadata: {
+                processingTime: Date.now() - startTime,
+                queryTypes: queryAnalysis.types,
+                hasExternalInfo: !!externalInfo && externalInfo.length > 0,
+                externalInfoCount: externalInfo ? externalInfo.length : 0,
+                timestamp: new Date().toISOString()
+            },
+            alternatives: action.alternatives,
+            shouldProceed: confidence.shouldProceed
+        };
+        
+        if (this.needsSpecialMessage(action.action)) {
+            decision.prefixMessage = this.actionSelector.getActionMessage(
+                action.action, 
+                queryAnalysis.original.substring(0, 100)
+            );
+        }
+        
+        this.saveDecision(context.userId, decision);
+        
+        logger.debug('Decisión generada', {
+            action: decision.action,
+            confidence: decision.confidence.overall,
+            reasoning: decision.reasoning.primary
+        });
+        
+        return decision;
+    }
+
+    getActionExplanation(action) {
+        const explanations = {
+            direct_response: 'Respuesta directa basada en conocimiento disponible',
+            search_external: 'Búsqueda de información externa requerida',
+            ask_clarification: 'Se necesita clarificación del usuario',
+            defer: 'Mejor no responder por falta de confianza',
+            analyze_deeply: 'Análisis profundo requerido',
+            give_options: 'Presentar múltiples perspectivas',
+            neutral_response: 'Respuesta neutral para tema sensible'
+        };
+        
+        return explanations[action.action] || 'Acción estándar';
+    }
+
+    needsSpecialMessage(action) {
+        const specialActions = [
+            'ask_clarification',
+            'defer',
+            'neutral_response'
+        ];
+        
+        return specialActions.includes(action);
+    }
+
+    saveDecision(userId, decision) {
+        if (!this.decisionHistory.has(userId)) {
+            this.decisionHistory.set(userId, []);
+        }
+        
+        const history = this.decisionHistory.get(userId);
+        history.push(decision);
+        
+        if (history.length > this.maxHistoryPerUser) {
+            history.shift();
+        }
+        
+        this.decisionHistory.set(userId, history);
+    }
+
+    getDecisionHistory(userId, limit = 5) {
+        const history = this.decisionHistory.get(userId) || [];
+        return history.slice(-limit);
+    }
+
+    adaptSystemPrompt(basePrompt, decision, queryAnalysis) {
+        let adaptedPrompt = basePrompt;
+        
+        const actionInstructions = this.getActionSpecificInstructions(decision.action);
+        if (actionInstructions) {
+            adaptedPrompt += `\n\n# INSTRUCCIONES ESPECÍFICAS:\n${actionInstructions}`;
+        }
+        
+        if (decision.confidence.level === 'low' || decision.confidence.level === 'very_low') {
+            adaptedPrompt += `\n\n# ADVERTENCIA: Confianza baja. Sé especialmente cuidadosa y considera pedir clarificación si es necesario.`;
+        }
+        
+        if (decision.action === 'neutral_response') {
+            adaptedPrompt += `\n\n# TEMA SENSIBLE: Mantén un tono neutral y objetivo. Evita opiniones personales. Proporciona información factual sin tomar posición.`;
+        }
+        
+        if (decision.action === 'analyze_deeply') {
+            adaptedPrompt += `\n\n# ANÁLISIS PROFUNDO: Proporciona una respuesta estructurada. Considera múltiples aspectos. Sé detallada pero concisa.`;
+        }
+        
+        return adaptedPrompt;
+    }
+
+    getActionSpecificInstructions(action) {
+        const instructions = {
+            direct_response: 'Responde de manera directa y clara. No des rodeos innecesarios.',
+            search_external: 'Incluye información verificada de fuentes externas cuando sea relevante.',
+            ask_clarification: 'Pide clarificación de manera educada. Sugiere posibles direcciones.',
+            analyze_deeply: 'Estructura la respuesta en puntos claros. Considera diferentes perspectivas.',
+            give_options: 'Presenta diferentes interpretaciones u opciones de manera objetiva.',
+            neutral_response: 'Mantén neutralidad absoluta. Cita hechos, no opiniones.',
+            defer: 'Reconoce las limitaciones educadamente. Ofrece alternativas si es posible.'
+        };
+        
+        return instructions[action];
+    }
+}
+
 // ==================== BASE DE DATOS SQLite ====================
 class Database {
     constructor() {
@@ -829,7 +1407,6 @@ class ConversationManager {
             ...metadata
         };
         
-        // Usar guion bajo para propiedades internas
         message._timestamp = Date.now();
         
         conversation.push(message);
@@ -885,11 +1462,11 @@ const conversationManager = new ConversationManager();
 class ResponseGenerator {
     constructor() {
         this.activeRequests = 0;
+        this.decisionEngine = new DecisionEngine(); // NUEVO: Decision Engine integrado
     }
 
     cleanMessagesForAPI(messages) {
         return messages.map(msg => {
-            // Solo incluir propiedades soportadas por Groq API
             const cleanMsg = {
                 role: msg.role,
                 content: msg.content
@@ -935,17 +1512,28 @@ class ResponseGenerator {
                     userId
                 });
                 
-                const messages = await conversationManager.prepareContext(
-                    userId, 
-                    context.externalInfo
-                );
+                // NUEVO: Adaptar prompt basado en decisión si existe
+                let messages;
+                if (context.decision) {
+                    const adaptedPrompt = this.decisionEngine.adaptSystemPrompt(
+                        SYSTEM_PROMPT,
+                        context.decision,
+                        context.queryAnalysis
+                    );
+                    
+                    // Preparar contexto con prompt adaptado
+                    messages = await conversationManager.prepareContext(userId, context.externalInfo);
+                    // Reemplazar el system prompt con el adaptado
+                    messages[0] = { role: 'system', content: adaptedPrompt };
+                } else {
+                    messages = await conversationManager.prepareContext(userId, context.externalInfo);
+                }
                 
                 messages.push({
                     role: 'user',
                     content: userMessage
                 });
                 
-                // LIMPIAR MENSAJES PARA API
                 const cleanedMessages = this.cleanMessagesForAPI(messages);
                 
                 logger.debug('Solicitando a Groq', {
@@ -1130,6 +1718,49 @@ class MessageHandler {
             const analysis = QueryAnalyzer.analyze(userMessage);
             logger.debug('Análisis de consulta', analysis);
             
+            // ============ NUEVA SECCIÓN: TOMA DE DECISIONES ============
+            const recentHistory = await database.getRecentConversations(userId, 3);
+            const lastResponse = recentHistory.length > 0 ? recentHistory[0].bot_response : null;
+            
+            const decisionEngine = new DecisionEngine();
+            const decision = await decisionEngine.makeDecision(
+                analysis,
+                null, // externalInfo aún no obtenido
+                {
+                    userId: userId,
+                    lastResponse: lastResponse,
+                    history: recentHistory,
+                    hasHistory: recentHistory.length > 0
+                }
+            );
+            
+            logger.debug('Decisión tomada', {
+                action: decision.action,
+                confidence: decision.confidence.overall,
+                reasoning: decision.reasoning.primary
+            });
+            
+            // Si la decisión es pedir clarificación, hacerlo y salir
+            if (decision.action === 'ask_clarification' && decision.prefixMessage) {
+                await message.reply({
+                    content: decision.prefixMessage,
+                    allowedMentions: { repliedUser: false }
+                });
+                rateLimiter.releaseToken();
+                return;
+            }
+            
+            // Si la decisión es diferir, responder y salir
+            if (decision.action === 'defer' && decision.prefixMessage) {
+                await message.reply({
+                    content: decision.prefixMessage,
+                    allowedMentions: { repliedUser: false }
+                });
+                rateLimiter.releaseToken();
+                return;
+            }
+            // ============ FIN NUEVA SECCIÓN ============
+            
             let externalInfo = null;
             if (analysis.needsExternalInfo && analysis.searchTerm) {
                 logger.debug('Buscando información externa', { searchTerm: analysis.searchTerm });
@@ -1145,7 +1776,8 @@ class MessageHandler {
                 userMessage,
                 {
                     externalInfo,
-                    queryAnalysis: analysis
+                    queryAnalysis: analysis,
+                    decision: decision // Pasar la decisión al generador
                 }
             );
             
@@ -1178,13 +1810,15 @@ class MessageHandler {
                 length: response.text.length,
                 model: response.model,
                 fromCache: response.fromCache,
-                hasExternalInfo: !!externalInfo
+                hasExternalInfo: !!externalInfo,
+                decision: decision.action // NUEVO: Loggear la decisión
             });
             
             logger.metric('message_processed', totalTime, {
                 userId,
                 success: true,
-                withExternalInfo: !!externalInfo
+                withExternalInfo: !!externalInfo,
+                decision: decision.action
             });
             
         } catch (error) {
@@ -1224,6 +1858,9 @@ class MessageHandler {
         
         if (/debug|diagnóstico|diagnostico|diag/i.test(content)) {
             try {
+                const decisionEngine = new DecisionEngine();
+                const decisionHistory = decisionEngine.getDecisionHistory(userId, 5);
+                
                 const diagnostics = {
                     groqKey: process.env.GROQ_API_KEY ? '✅ Presente' : '❌ FALTANTE',
                     database: database.initialized ? '✅ Inicializada' : '❌ No inicializada',
@@ -1236,7 +1873,9 @@ class MessageHandler {
                     cache: responseCache.getStats(),
                     memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
                     conversations: conversationManager.conversations.size,
-                    yourConversation: conversationManager.getConversation(userId).length
+                    yourConversation: conversationManager.getConversation(userId).length,
+                    // NUEVO: Información de decisiones
+                    decisionHistory: decisionHistory.length > 0 ? decisionHistory.map(d => d.action) : 'Sin historial'
                 };
                 
                 await message.reply({
@@ -1293,7 +1932,7 @@ class MessageHandler {
                 .setDescription('Soy una chica gato seria y reservada')
                 .addFields(
                     { name: '¿Cómo usar?', value: '1. Mencioname (@Mancy)\n2. Responde (haz reply) a mis mensajes para conversar\n3. ¡Listo!' },
-                    { name: '¿Qué puedo hacer?', value: '• Responder preguntas\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Conversar sobre temas variados' },
+                    { name: '¿Qué puedo hacer?', value: '• Responder preguntas\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Conversar sobre temas variados\n• Tomar decisiones inteligentes sobre cómo responder' }, // NUEVO
                     { name: 'Comandos especiales', value: '`@Mancy help` - Esta ayuda\n`@Mancy reset` - Reiniciar conversación\n`@Mancy stats` - Ver estadísticas\n`@Mancy diag` - Diagnóstico del sistema\n`@Mancy fix` - Reparar estado' }
                 )
                 .setFooter({ text: 'Recuerda: solo respondo a replies de mis mensajes' })
@@ -1322,6 +1961,9 @@ class MessageHandler {
                 const cacheStats = responseCache.getStats();
                 const conversation = conversationManager.getConversation(userId);
                 
+                const decisionEngine = new DecisionEngine();
+                const decisionPatterns = decisionEngine.analyzeDecisionPatterns(userId);
+                
                 const embed = new EmbedBuilder()
                     .setColor(Colors.Green)
                     .setTitle(`📊 Estadísticas de ${CONFIG.BOT_NAME}`)
@@ -1332,8 +1974,18 @@ class MessageHandler {
                         { name: 'Cache hit rate', value: `${(cacheStats.hitRate * 100).toFixed(1)}%`, inline: true },
                         { name: 'Conversaciones activas', value: `${conversationManager.conversations.size}`, inline: true },
                         { name: 'Modelo principal', value: CONFIG.GROQ_MODEL, inline: true }
-                    )
-                    .setFooter({ text: `Versión ${CONFIG.BOT_VERSION}` })
+                    );
+                
+                // NUEVO: Añadir estadísticas de decisiones si existen
+                if (decisionPatterns) {
+                    embed.addFields(
+                        { name: 'Confianza promedio', value: `${(decisionPatterns.averageConfidence * 100).toFixed(1)}%`, inline: true },
+                        { name: 'Clarificaciones', value: `${(decisionPatterns.clarificationRate * 100).toFixed(1)}%`, inline: true },
+                        { name: 'Búsquedas', value: `${(decisionPatterns.searchRate * 100).toFixed(1)}%`, inline: true }
+                    );
+                }
+                
+                embed.setFooter({ text: `Versión ${CONFIG.BOT_VERSION}` })
                     .setTimestamp();
                 
                 await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
