@@ -2014,7 +2014,10 @@ const SYSTEM_PROMPT = `Eres ${CONFIG.BOT_NAME}, una chica gato seria, reservada 
 {EXTERNAL_INFO}
 
 # ANÁLISIS INTEGRADO DEL CONCILIO
-{COUNCIL_ANALYSIS}`;
+{COUNCIL_ANALYSIS}
+
+# INFORMACIÓN PERSONALIZADA DEL USUARIO
+{PERSONALIZED_INFO}`;
 
 // ==================== UTILIDADES ====================
 class TextUtils {
@@ -2350,14 +2353,15 @@ class ConversationManager {
         return message;
     }
 
-    async prepareContext(userId, externalInfo = null, councilAnalysis = null) {
+    async prepareContext(userId, externalInfo = null, councilAnalysis = null, personalizedInfo = '') {
         const conversation = this.getConversation(userId);
         
         const dbHistory = await database.getRecentConversations(userId, 3);
         const contextSummary = TextUtils.summarizeContext(dbHistory);
         
         let systemPrompt = SYSTEM_PROMPT
-            .replace('{CONTEXT_SUMMARY}', contextSummary || 'No hay historial previo.');
+            .replace('{CONTEXT_SUMMARY}', contextSummary || 'No hay historial previo.')
+            .replace('{PERSONALIZED_INFO}', personalizedInfo || 'No hay información personalizada disponible.');
         
         if (externalInfo) {
             const infoText = Array.isArray(externalInfo) 
@@ -2384,9 +2388,9 @@ class ConversationManager {
                 `⚠️ ${rec.message}`
             ).join('\n');
             
-            const fullCouncilText = councilText + insightsText;
+            let fullCouncilText = councilText + insightsText;
             if (recommendationsText) {
-                fullCouncilText + '\n\n# RECOMENDACIONES:\n' + recommendationsText;
+                fullCouncilText = fullCouncilText + '\n\n# RECOMENDACIONES:\n' + recommendationsText;
             }
             
             systemPrompt = systemPrompt.replace('{COUNCIL_ANALYSIS}', fullCouncilText);
@@ -2441,7 +2445,8 @@ class ResponseGenerator {
             userId,
             messagePreview: userMessage.substring(0, 50),
             contextLength: context?.externalInfo?.length || 0,
-            hasCouncilAnalysis: !!context.councilAnalysis
+            hasCouncilAnalysis: !!context.councilAnalysis,
+            hasPersonalizedInfo: !!context.personalizedInfo
         });
         
         const cacheKey = responseCache.generateKey('response', `${userId}:${userMessage.substring(0, 100)}`);
@@ -2464,11 +2469,12 @@ class ResponseGenerator {
                     userId
                 });
                 
-                // Preparar contexto incluyendo análisis del concilio
+                // Preparar contexto incluyendo análisis del concilio e info personalizada
                 const messages = await conversationManager.prepareContext(
                     userId, 
                     context.externalInfo,
-                    context.councilAnalysis
+                    context.councilAnalysis,
+                    context.personalizedInfo
                 );
                 
                 messages.push({
@@ -2576,7 +2582,8 @@ class ResponseGenerator {
         logger.warn('Generando respuesta de fallback', {
             userMessagePreview: userMessage.substring(0, 50),
             hasExternalInfo: !!context.externalInfo,
-            hasCouncilAnalysis: !!context.councilAnalysis
+            hasCouncilAnalysis: !!context.councilAnalysis,
+            hasPersonalizedInfo: !!context.personalizedInfo
         });
         
         const fallbacks = [
@@ -2608,6 +2615,800 @@ class ResponseGenerator {
 }
 
 const responseGenerator = new ResponseGenerator();
+
+// ==================== NUEVAS CLASES AÑADIDAS ====================
+// ==================== SISTEMA DE PERFIL DE USUARIO ====================
+
+class UserProfileManager {
+    constructor() {
+        this.profiles = new Map();
+        this.initialized = false;
+    }
+
+    async initialize() {
+        if (!database.initialized) return;
+        
+        await database.db.exec(`
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                user_id TEXT PRIMARY KEY,
+                username TEXT,
+                first_interaction DATETIME,
+                last_interaction DATETIME,
+                total_interactions INTEGER DEFAULT 0,
+                preferred_depth TEXT DEFAULT 'medium',
+                preferred_style TEXT DEFAULT 'balanced',
+                preferred_language TEXT DEFAULT 'es',
+                interest_topics TEXT DEFAULT '[]',
+                interest_psychology TEXT DEFAULT '[]',
+                interest_philosophy TEXT DEFAULT '[]',
+                interest_science TEXT DEFAULT '[]',
+                mood_history TEXT DEFAULT '[]',
+                current_mood_trend TEXT,
+                goals TEXT DEFAULT '[]',
+                reminders TEXT DEFAULT '[]',
+                topics_explored INTEGER DEFAULT 0,
+                deep_conversations INTEGER DEFAULT 0,
+                crisis_interactions INTEGER DEFAULT 0,
+                exercises_completed INTEGER DEFAULT 0,
+                allow_mood_tracking BOOLEAN DEFAULT 1,
+                allow_topic_tracking BOOLEAN DEFAULT 1,
+                allow_personalized_responses BOOLEAN DEFAULT 1,
+                data_retention_days INTEGER DEFAULT 90,
+                profile_version INTEGER DEFAULT 1,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS conversation_embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                message_hash TEXT NOT NULL,
+                embedding TEXT,
+                topics TEXT,
+                sentiment_score REAL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES user_profiles(user_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS user_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                metric_date DATE DEFAULT CURRENT_DATE,
+                anxiety_level INTEGER,
+                mood_level INTEGER,
+                stress_level INTEGER,
+                sleep_quality INTEGER,
+                topics_discussed TEXT,
+                notes TEXT,
+                FOREIGN KEY (user_id) REFERENCES user_profiles(user_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_user_metrics_date ON user_metrics(user_id, metric_date);
+            CREATE INDEX IF NOT EXISTS idx_conversation_embeddings_user ON conversation_embeddings(user_id);
+        `);
+
+        this.initialized = true;
+        logger.info('✅ UserProfileManager inicializado');
+    }
+
+    async getProfile(userId) {
+        if (this.profiles.has(userId)) {
+            const profile = this.profiles.get(userId);
+            if (Date.now() - profile._cachedAt < 300000) {
+                return profile;
+            }
+        }
+
+        const profile = await database.db.get(
+            `SELECT * FROM user_profiles WHERE user_id = ?`,
+            [userId]
+        );
+
+        if (profile) {
+            if (profile.interest_topics) profile.interest_topics = JSON.parse(profile.interest_topics);
+            if (profile.interest_psychology) profile.interest_psychology = JSON.parse(profile.interest_psychology);
+            if (profile.interest_philosophy) profile.interest_philosophy = JSON.parse(profile.interest_philosophy);
+            if (profile.interest_science) profile.interest_science = JSON.parse(profile.interest_science);
+            if (profile.mood_history) profile.mood_history = JSON.parse(profile.mood_history);
+            if (profile.goals) profile.goals = JSON.parse(profile.goals);
+            if (profile.reminders) profile.reminders = JSON.parse(profile.reminders);
+
+            profile._cachedAt = Date.now();
+            this.profiles.set(userId, profile);
+            return profile;
+        }
+
+        return this.createProfile(userId);
+    }
+
+    async createProfile(userId, username = null) {
+        const newProfile = {
+            user_id: userId,
+            username: username,
+            first_interaction: new Date().toISOString(),
+            last_interaction: new Date().toISOString(),
+            total_interactions: 0,
+            preferred_depth: 'medium',
+            preferred_style: 'balanced',
+            preferred_language: 'es',
+            interest_topics: [],
+            interest_psychology: [],
+            interest_philosophy: [],
+            interest_science: [],
+            mood_history: [],
+            current_mood_trend: 'stable',
+            goals: [],
+            reminders: [],
+            topics_explored: 0,
+            deep_conversations: 0,
+            crisis_interactions: 0,
+            exercises_completed: 0,
+            allow_mood_tracking: true,
+            allow_topic_tracking: true,
+            allow_personalized_responses: true,
+            data_retention_days: 90,
+            profile_version: 1,
+            _cachedAt: Date.now()
+        };
+
+        await database.db.run(
+            `INSERT INTO user_profiles (
+                user_id, username, first_interaction, last_interaction,
+                preferred_depth, preferred_style, preferred_language,
+                interest_topics, interest_psychology, interest_philosophy, interest_science,
+                allow_mood_tracking, allow_topic_tracking, allow_personalized_responses
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                userId, username, newProfile.first_interaction, newProfile.last_interaction,
+                newProfile.preferred_depth, newProfile.preferred_style, newProfile.preferred_language,
+                JSON.stringify([]), JSON.stringify([]), JSON.stringify([]), JSON.stringify([]),
+                true, true, true
+            ]
+        );
+
+        this.profiles.set(userId, newProfile);
+        return newProfile;
+    }
+
+    async updateProfile(userId, updates) {
+        const profile = await this.getProfile(userId);
+        if (!profile) return null;
+
+        Object.assign(profile, updates);
+        profile.updated_at = new Date().toISOString();
+        profile._cachedAt = Date.now();
+
+        const updateFields = [];
+        const updateValues = [];
+
+        for (const [key, value] of Object.entries(updates)) {
+            if (key.startsWith('_')) continue;
+            
+            if (Array.isArray(value) || typeof value === 'object') {
+                updateFields.push(`${key} = ?`);
+                updateValues.push(JSON.stringify(value));
+            } else {
+                updateFields.push(`${key} = ?`);
+                updateValues.push(value);
+            }
+        }
+
+        updateValues.push(userId);
+        updateFields.push('updated_at = CURRENT_TIMESTAMP');
+
+        await database.db.run(
+            `UPDATE user_profiles SET ${updateFields.join(', ')} WHERE user_id = ?`,
+            updateValues
+        );
+
+        this.profiles.set(userId, profile);
+        return profile;
+    }
+
+    async recordInteraction(userId, interactionData) {
+        const profile = await this.getProfile(userId);
+        if (!profile) return;
+
+        profile.total_interactions++;
+        profile.last_interaction = new Date().toISOString();
+
+        if (interactionData.topics && interactionData.topics.length > 0) {
+            this.updateInterestTopics(userId, interactionData.topics, interactionData.source);
+        }
+
+        if (interactionData.sentiment && profile.allow_mood_tracking) {
+            this.updateMoodHistory(userId, interactionData.sentiment);
+        }
+
+        if (interactionData.depth === 'deep' || interactionData.depth === 'high') {
+            profile.deep_conversations++;
+        }
+
+        if (interactionData.crisis_detected) {
+            profile.crisis_interactions++;
+        }
+
+        await this.updateProfile(userId, {
+            total_interactions: profile.total_interactions,
+            last_interaction: profile.last_interaction,
+            deep_conversations: profile.deep_conversations,
+            crisis_interactions: profile.crisis_interactions
+        });
+
+        if (interactionData.embedding) {
+            await database.db.run(
+                `INSERT INTO conversation_embeddings (user_id, message_hash, embedding, topics, sentiment_score)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [
+                    userId,
+                    interactionData.message_hash,
+                    JSON.stringify(interactionData.embedding),
+                    JSON.stringify(interactionData.topics || []),
+                    interactionData.sentiment?.score || null
+                ]
+            );
+        }
+    }
+
+    async updateInterestTopics(userId, newTopics, source) {
+        const profile = await this.getProfile(userId);
+        if (!profile || !profile.allow_topic_tracking) return;
+
+        const topicField = `interest_${source}`;
+        if (!profile[topicField]) profile[topicField] = [];
+
+        const currentTopics = profile[topicField];
+        const topicMap = new Map();
+
+        currentTopics.forEach(t => {
+            if (typeof t === 'string') {
+                topicMap.set(t, 1);
+            } else if (t.topic) {
+                topicMap.set(t.topic, t.count || 1);
+            }
+        });
+
+        newTopics.forEach(topic => {
+            const count = topicMap.get(topic) || 0;
+            topicMap.set(topic, count + 1);
+        });
+
+        const updatedTopics = Array.from(topicMap.entries())
+            .map(([topic, count]) => ({ topic, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 20);
+
+        profile[topicField] = updatedTopics;
+
+        await this.updateProfile(userId, {
+            [topicField]: updatedTopics,
+            topics_explored: profile.topics_explored + 1
+        });
+    }
+
+    async updateMoodHistory(userId, sentimentData) {
+        const profile = await this.getProfile(userId);
+        if (!profile || !profile.allow_mood_tracking) return;
+
+        const moodEntry = {
+            timestamp: new Date().toISOString(),
+            score: sentimentData.score,
+            label: sentimentData.label,
+            confidence: sentimentData.confidence,
+            topics: sentimentData.topics || []
+        };
+
+        let moodHistory = profile.mood_history || [];
+        moodHistory.push(moodEntry);
+
+        if (moodHistory.length > 100) {
+            moodHistory = moodHistory.slice(-100);
+        }
+
+        const recentMoods = moodHistory.slice(-10);
+        if (recentMoods.length >= 5) {
+            const avgScore = recentMoods.reduce((sum, m) => sum + m.score, 0) / recentMoods.length;
+            const previousAvg = moodHistory.slice(-20, -10).reduce((sum, m) => sum + m.score, 0) / 10;
+
+            if (avgScore > previousAvg + 0.5) profile.current_mood_trend = 'improving';
+            else if (avgScore < previousAvg - 0.5) profile.current_mood_trend = 'declining';
+            else profile.current_mood_trend = 'stable';
+        }
+
+        profile.mood_history = moodHistory;
+
+        await this.updateProfile(userId, {
+            mood_history: moodHistory,
+            current_mood_trend: profile.current_mood_trend
+        });
+
+        const lastThreeNegative = moodHistory.slice(-3).every(m => m.score < -0.3);
+        if (lastThreeNegative && moodHistory.length >= 3) {
+            logger.warn('Patrón de ánimo negativo detectado', { userId });
+            return { warning: 'negative_pattern' };
+        }
+    }
+
+    async getPersonalizedPrompt(userId, basePrompt) {
+        const profile = await this.getProfile(userId);
+        if (!profile || !profile.allow_personalized_responses) return basePrompt;
+
+        let personalization = '';
+
+        personalization += `\n## Preferencia de profundidad: ${profile.preferred_depth}`;
+        
+        const allInterests = [
+            ...(profile.interest_psychology || []).slice(0, 3).map(t => t.topic),
+            ...(profile.interest_philosophy || []).slice(0, 3).map(t => t.topic),
+            ...(profile.interest_science || []).slice(0, 3).map(t => t.topic)
+        ];
+
+        if (allInterests.length > 0) {
+            personalization += `\n## Temas de interés frecuente: ${allInterests.join(', ')}`;
+        }
+
+        if (profile.mood_history && profile.mood_history.length > 0) {
+            const lastMood = profile.mood_history[profile.mood_history.length - 1];
+            personalization += `\n## Estado de ánimo reciente: ${lastMood.label || 'neutral'}`;
+            
+            if (profile.current_mood_trend === 'declining') {
+                personalization += '\n## NOTA: El usuario muestra tendencia a estado de ánimo descendente. Respuesta especialmente empática.';
+            }
+        }
+
+        const activeReminders = (profile.reminders || []).filter(r => !r.completed);
+        if (activeReminders.length > 0) {
+            personalization += '\n## Recordatorios activos del usuario:';
+            activeReminders.slice(0, 2).forEach(r => {
+                personalization += `\n- ${r.description} (${r.due_date || 'sin fecha'})`;
+            });
+        }
+
+        const activeGoals = (profile.goals || []).filter(g => g.status === 'active');
+        if (activeGoals.length > 0) {
+            personalization += '\n## Metas personales en seguimiento:';
+            activeGoals.slice(0, 2).forEach(g => {
+                personalization += `\n- ${g.description} (progreso: ${g.progress || 0}%)`;
+            });
+        }
+
+        personalization += `\n\n## Estilo de respuesta preferido: ${profile.preferred_style}`;
+        switch(profile.preferred_style) {
+            case 'empathic':
+                personalization += '\nPriorizar validación emocional y tono cálido.';
+                break;
+            case 'analytical':
+                personalization += '\nPriorizar estructura lógica y datos precisos.';
+                break;
+            case 'socratic':
+                personalization += '\nPriorizar preguntas que inviten a reflexión.';
+                break;
+            case 'poetic':
+                personalization += '\nPriorizar lenguaje lírico y metafórico.';
+                break;
+        }
+
+        return personalization;
+    }
+}
+
+// ==================== GESTOR DE METAS Y RECORDATORIOS ====================
+
+class GoalManager {
+    constructor(userProfileManager) {
+        this.profileManager = userProfileManager;
+    }
+
+    async addGoal(userId, goalData) {
+        const profile = await this.profileManager.getProfile(userId);
+        
+        const goal = {
+            id: `goal_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            description: goalData.description,
+            category: goalData.category || 'personal',
+            start_date: new Date().toISOString(),
+            target_date: goalData.target_date,
+            status: 'active',
+            progress: 0,
+            milestones: goalData.milestones || [],
+            notes: goalData.notes || '',
+            reminders: goalData.reminders || []
+        };
+
+        const goals = profile.goals || [];
+        goals.push(goal);
+        
+        await this.profileManager.updateProfile(userId, { goals });
+        
+        return goal;
+    }
+
+    async updateGoalProgress(userId, goalId, progress) {
+        const profile = await this.profileManager.getProfile(userId);
+        const goals = profile.goals || [];
+        
+        const goalIndex = goals.findIndex(g => g.id === goalId);
+        if (goalIndex === -1) return null;
+
+        goals[goalIndex].progress = Math.min(100, Math.max(0, progress));
+        
+        if (goals[goalIndex].progress >= 100) {
+            goals[goalIndex].status = 'completed';
+            goals[goalIndex].completion_date = new Date().toISOString();
+        }
+
+        await this.profileManager.updateProfile(userId, { goals });
+        
+        return goals[goalIndex];
+    }
+
+    async addReminder(userId, reminderData) {
+        const profile = await this.profileManager.getProfile(userId);
+        
+        const reminder = {
+            id: `rem_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            description: reminderData.description,
+            type: reminderData.type || 'general',
+            due_date: reminderData.due_date,
+            recurring: reminderData.recurring || null,
+            completed: false,
+            related_goal_id: reminderData.related_goal_id,
+            created_at: new Date().toISOString()
+        };
+
+        const reminders = profile.reminders || [];
+        reminders.push(reminder);
+        
+        await this.profileManager.updateProfile(userId, { reminders });
+        
+        return reminder;
+    }
+
+    async getDueReminders() {
+        const now = new Date().toISOString();
+        const dueReminders = [];
+
+        for (const [userId, profile] of this.profileManager.profiles.entries()) {
+            if (!profile.reminders) continue;
+
+            const userDueReminders = profile.reminders.filter(r => 
+                !r.completed && r.due_date && r.due_date <= now
+            );
+
+            if (userDueReminders.length > 0) {
+                dueReminders.push({ userId, reminders: userDueReminders });
+            }
+        }
+
+        return dueReminders;
+    }
+
+    async completeReminder(userId, reminderId) {
+        const profile = await this.profileManager.getProfile(userId);
+        const reminders = profile.reminders || [];
+        
+        const reminderIndex = reminders.findIndex(r => r.id === reminderId);
+        if (reminderIndex === -1) return null;
+
+        reminders[reminderIndex].completed = true;
+        reminders[reminderIndex].completed_at = new Date().toISOString();
+
+        if (reminders[reminderIndex].recurring) {
+            const nextDate = this.calculateNextRecurrence(reminders[reminderIndex]);
+            if (nextDate) {
+                const newReminder = {
+                    ...reminders[reminderIndex],
+                    id: `rem_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                    due_date: nextDate,
+                    completed: false,
+                    created_at: new Date().toISOString()
+                };
+                reminders.push(newReminder);
+            }
+        }
+
+        await this.profileManager.updateProfile(userId, { reminders });
+        
+        return reminders[reminderIndex];
+    }
+
+    calculateNextRecurrence(reminder) {
+        const dueDate = new Date(reminder.due_date);
+        
+        switch(reminder.recurring) {
+            case 'daily':
+                dueDate.setDate(dueDate.getDate() + 1);
+                break;
+            case 'weekly':
+                dueDate.setDate(dueDate.getDate() + 7);
+                break;
+            case 'monthly':
+                dueDate.setMonth(dueDate.getMonth() + 1);
+                break;
+            default:
+                return null;
+        }
+        
+        return dueDate.toISOString();
+    }
+}
+
+// ==================== RECURSOS DE SALUD MENTAL ====================
+
+class MentalHealthResources {
+    constructor() {
+        this.resources = {
+            crisis_lines: {
+                'es': {
+                    'spain': { name: 'Teléfono de la Esperanza', number: '717 003 717', website: 'https://telefonodelaesperanza.org' },
+                    'mexico': { name: 'SAPTEL', number: '55 5259-8121', website: 'https://www.gob.mx/salud' },
+                    'argentina': { name: 'Línea de Prevención del Suicidio', number: '135', website: 'https://www.argentina.gob.ar/salud' },
+                    'colombia': { name: 'Línea 106', number: '106', website: 'https://www.minsalud.gov.co' },
+                    'chile': { name: 'Salud Responde', number: '600 360 7777', website: 'https://www.minsal.cl' },
+                    'peru': { name: 'Línea 113', number: '113', website: 'https://www.gob.pe/minsa' },
+                    'venezuela': { name: 'Línea de Ayuda Psicológica', number: '0-800-111-333', website: 'https://www.avessoc.org' },
+                    'ecuador': { name: 'Línea 171', number: '171', website: 'https://www.salud.gob.ec' },
+                    'bolivia': { name: 'Línea de Crisis', number: '800-10-3020', website: 'https://www.minsalud.gob.bo' },
+                    'uruguay': { name: 'Línea de Prevención', number: '0800 0767', website: 'https://www.gub.uy/ministerio-salud-publica' },
+                    'paraguay': { name: 'Línea 133', number: '133', website: 'https://www.mspbs.gov.py' },
+                    'costa_rica': { name: 'Línea 132', number: '132', website: 'https://www.ministeriodesalud.go.cr' },
+                    'panama': { name: 'Línea de Crisis', number: '169', website: 'https://www.minsa.gob.pa' },
+                    'puerto_rico': { name: 'Línea PAS', number: '1-800-981-0023', website: 'https://www.salud.gov.pr' }
+                },
+                'en': {
+                    'usa': { name: '988 Suicide & Crisis Lifeline', number: '988', website: 'https://988lifeline.org' },
+                    'uk': { name: 'Samaritans', number: '116 123', website: 'https://www.samaritans.org' },
+                    'canada': { name: 'Talk Suicide Canada', number: '1-833-456-4566', website: 'https://talksuicide.ca' },
+                    'australia': { name: 'Lifeline', number: '13 11 14', website: 'https://www.lifeline.org.au' },
+                    'new_zealand': { name: 'Need to Talk?', number: '1737', website: 'https://1737.org.nz' },
+                    'ireland': { name: 'Samaritans Ireland', number: '116 123', website: 'https://www.samaritans.ie' },
+                    'south_africa': { name: 'SADAG', number: '0800 567 567', website: 'https://www.sadag.org' }
+                }
+            },
+            
+            therapist_directories: {
+                'es': [
+                    { name: 'Psicologia Online', url: 'https://www.psicologia-online.com/psicologos' },
+                    { name: 'Doctoralia', url: 'https://www.doctoralia.es' },
+                    { name: 'Councelling', url: 'https://www.councelling.es' }
+                ],
+                'en': [
+                    { name: 'Psychology Today', url: 'https://www.psychologytoday.com' },
+                    { name: 'BetterHelp', url: 'https://www.betterhelp.com' },
+                    { name: 'Talkspace', url: 'https://www.talkspace.com' }
+                ]
+            },
+            
+            psychoeducation: {
+                anxiety: {
+                    title: 'Información sobre Ansiedad',
+                    description: 'La ansiedad es una respuesta natural del cuerpo ante situaciones percibidas como amenazantes.',
+                    resources: [
+                        { name: 'NIMH - Anxiety Disorders', url: 'https://www.nimh.nih.gov/health/topics/anxiety-disorders' },
+                        { name: 'ADAA', url: 'https://adaa.org' }
+                    ],
+                    techniques: [
+                        'Respiración diafragmática',
+                        'Mindfulness',
+                        'Exposición gradual',
+                        'Reestructuración cognitiva'
+                    ]
+                },
+                depression: {
+                    title: 'Información sobre Depresión',
+                    description: 'La depresión es un trastorno del estado de ánimo que afecta cómo te sientes, piensas y manejas actividades diarias.',
+                    resources: [
+                        { name: 'NIMH - Depression', url: 'https://www.nimh.nih.gov/health/topics/depression' },
+                        { name: 'NAMI', url: 'https://www.nami.org/About-Mental-Illness/Mental-Health-Conditions/Depression' }
+                    ],
+                    techniques: [
+                        'Activación conductual',
+                        'Ejercicio físico',
+                        'Establecer rutinas',
+                        'Conexión social'
+                    ]
+                }
+            },
+            
+            mental_health_apps: [
+                { name: 'Woebot', platform: 'iOS/Android', focus: 'TCC para ansiedad y depresión', evidence_based: true },
+                { name: 'Calm', platform: 'iOS/Android', focus: 'Meditación y sueño', evidence_based: true },
+                { name: 'Headspace', platform: 'iOS/Android', focus: 'Mindfulness', evidence_based: true },
+                { name: 'Moodpath', platform: 'iOS/Android', focus: 'Seguimiento de estado de ánimo', evidence_based: true },
+                { name: 'Sanvello', platform: 'iOS/Android', focus: 'TCC y mindfulness', evidence_based: true }
+            ]
+        };
+    }
+
+    async detectUserCountry(userId) {
+        return 'spain';
+    }
+
+    async getCrisisResources(country = null, language = 'es') {
+        if (!country) {
+            country = await this.detectUserCountry();
+        }
+
+        const countryResources = this.resources.crisis_lines[language]?.[country];
+        
+        if (countryResources) {
+            return {
+                has_local_resources: true,
+                primary: countryResources,
+                backup: this.resources.crisis_lines[language === 'es' ? 'en' : 'es']?.usa
+            };
+        }
+
+        return {
+            has_local_resources: false,
+            international: [
+                { name: 'International Association for Suicide Prevention', website: 'https://www.iasp.info/resources/Crisis_Centres/' },
+                { name: 'Befrienders Worldwide', website: 'https://www.befrienders.org' }
+            ]
+        };
+    }
+
+    async getPsychoeducation(topic, language = 'es') {
+        const topicKey = topic.toLowerCase();
+        const info = this.resources.psychoeducation[topicKey];
+        
+        if (!info) {
+            return {
+                title: `Información sobre ${topic}`,
+                description: `Aquí tienes recursos para aprender más sobre ${topic}.`,
+                resources: [
+                    { name: 'Psychology Today', url: `https://www.psychologytoday.com/${language}/search?q=${encodeURIComponent(topic)}` },
+                    { name: 'PubMed', url: `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(topic)}` }
+                ]
+            };
+        }
+
+        return info;
+    }
+
+    formatCrisisResponse(resources, userMood = null) {
+        let response = `⚠️ **RECURSOS DE APOYO PROFESIONAL** ⚠️\n\n`;
+        
+        if (resources.has_local_resources) {
+            response += `En tu país, puedes contactar:\n`;
+            response += `📞 **${resources.primary.name}**: ${resources.primary.number}\n`;
+            response += `🌐 ${resources.primary.website}\n\n`;
+        } else {
+            response += `No encontré recursos específicos para tu país. Aquí hay líneas internacionales:\n\n`;
+            resources.international.forEach(r => {
+                response += `🌐 **${r.name}**: ${r.website}\n`;
+            });
+            response += '\n';
+        }
+
+        response += `**Importante**: Como asistente virtual, no puedo proporcionar terapia. Estos recursos tienen profesionales capacitados.\n\n`;
+        
+        if (userMood === 'critical') {
+            response += `🆘 Si sientes que no puedes mantenerte a salvo, **llama inmediatamente** a servicios de emergencia (911, 112 o equivalente en tu país).`;
+        }
+
+        return response;
+    }
+}
+
+// ==================== INTEGRACIÓN DE INVESTIGACIÓN ACADÉMICA ====================
+
+class ResearchAPIIntegration {
+    constructor() {
+        this.apis = {
+            pubmed: {
+                baseUrl: 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils',
+                enabled: true
+            }
+        };
+    }
+
+    async searchPubMed(query, maxResults = 5) {
+        try {
+            const searchUrl = `${this.apis.pubmed.baseUrl}/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmode=json&retmax=${maxResults}`;
+            
+            const searchResponse = await fetch(searchUrl);
+            const searchData = await searchResponse.json();
+            
+            const ids = searchData.esearchresult?.idlist || [];
+            
+            if (ids.length === 0) return [];
+
+            const summaryUrl = `${this.apis.pubmed.baseUrl}/esummary.fcgi?db=pubmed&id=${ids.join(',')}&retmode=json`;
+            
+            const summaryResponse = await fetch(summaryUrl);
+            const summaryData = await summaryResponse.json();
+
+            const results = [];
+            for (const id of ids) {
+                const article = summaryData.result[id];
+                if (article) {
+                    results.push({
+                        title: article.title,
+                        authors: article.authors?.map(a => a.name).join(', ') || 'Autores no disponibles',
+                        journal: article.fulljournalname || article.source,
+                        year: article.pubdate?.substring(0, 4),
+                        url: `https://pubmed.ncbi.nlm.nih.gov/${id}/`,
+                        source: 'PubMed'
+                    });
+                }
+            }
+
+            return results;
+
+        } catch (error) {
+            logger.error('Error searching PubMed', error);
+            return [];
+        }
+    }
+
+    async searchPsyArXiv(query, maxResults = 5) {
+        try {
+            const url = `https://api.osf.io/v2/preprints/?filter[provider]=psyarxiv&filter[title]=${encodeURIComponent(query)}`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+
+            return (data.data || []).slice(0, maxResults).map(item => ({
+                title: item.attributes.title,
+                authors: item.attributes.authors?.map(a => a.name).join(', '),
+                url: item.links.html,
+                source: 'PsyArXiv'
+            }));
+
+        } catch (error) {
+            logger.error('Error searching PsyArXiv', error);
+            return [];
+        }
+    }
+
+    async searchAll(query, topics = ['psychology', 'philosophy']) {
+        const results = {
+            psychology: [],
+            philosophy: []
+        };
+
+        const promises = [];
+
+        if (topics.includes('psychology')) {
+            promises.push(
+                this.searchPubMed(query + ' psychology').then(r => results.psychology.push(...r)),
+                this.searchPsyArXiv(query).then(r => results.psychology.push(...r))
+            );
+        }
+
+        await Promise.allSettled(promises);
+
+        return results;
+    }
+
+    formatResearchResponse(results, topic) {
+        let response = `📚 **INVESTIGACIÓN RECIENTE SOBRE ${topic.toUpperCase()}**\n\n`;
+
+        const allResults = [...results.psychology, ...results.philosophy].slice(0, 5);
+
+        if (allResults.length === 0) {
+            response += 'No se encontraron resultados específicos. Prueba con términos más generales.';
+            return response;
+        }
+
+        allResults.forEach((result, index) => {
+            response += `**${index + 1}. ${result.title}**\n`;
+            if (result.authors) response += `✍️ ${result.authors}\n`;
+            if (result.journal) response += `📖 ${result.journal} (${result.year})\n`;
+            response += `🔗 ${result.url}\n\n`;
+        });
+
+        response += `\n*Nota: Estos son resultados de búsqueda académica. Consulta con profesionales para aplicaciones clínicas.*`;
+
+        return response;
+    }
+}
+
+// ==================== INICIALIZAR NUEVOS SISTEMAS ====================
+const userProfileManager = new UserProfileManager();
+const goalManager = new GoalManager(userProfileManager);
+const mentalHealthResources = new MentalHealthResources();
+const researchAPI = new ResearchAPIIntegration();
 
 // ==================== MANEJADOR PRINCIPAL MEJORADO ====================
 class MessageHandler {
@@ -2661,6 +3462,31 @@ class MessageHandler {
             const analysis = QueryAnalyzer.analyze(userMessage);
             logger.debug('Análisis de consulta', analysis);
             
+            // ============ VERIFICAR CRISIS ============
+            if (analysis.isPsychological) {
+                const crisisWords = ['suicidio', 'matarme', 'no quiero vivir', 'acabar con todo', 'autolesión'];
+                const hasCrisisWords = crisisWords.some(word => userMessage.toLowerCase().includes(word));
+                
+                if (hasCrisisWords) {
+                    const resources = await mentalHealthResources.getCrisisResources();
+                    const crisisResponse = mentalHealthResources.formatCrisisResponse(resources, 'critical');
+                    
+                    await message.reply({
+                        content: crisisResponse,
+                        allowedMentions: { repliedUser: false }
+                    });
+                    
+                    await userProfileManager.recordInteraction(userId, {
+                        topics: ['crisis'],
+                        crisis_detected: true,
+                        source: 'psychology'
+                    });
+                    
+                    rateLimiter.releaseToken();
+                    return;
+                }
+            }
+            
             // ============ NUEVA SECCIÓN: CONCILIO DE MÓDULOS ============
             let councilAnalysis = null;
             if (analysis.isPsychological || analysis.isPhilosophical) {
@@ -2710,13 +3536,33 @@ class MessageHandler {
                 });
             }
             
+            // ============ OBTENER INFO PERSONALIZADA ============
+            let personalizedInfo = '';
+            if (userProfileManager.initialized) {
+                personalizedInfo = await userProfileManager.getPersonalizedPrompt(userId, '');
+            }
+            
+            // ============ REGISTRAR INTERACCIÓN EN PERFIL ============
+            if (userProfileManager.initialized) {
+                const sentiment = this.analyzeSentiment(userMessage);
+                
+                await userProfileManager.recordInteraction(userId, {
+                    topics: analysis.isPsychological ? ['psicología'] : analysis.isPhilosophical ? ['filosofía'] : [],
+                    source: analysis.isPsychological ? 'psychology' : analysis.isPhilosophical ? 'philosophy' : 'general',
+                    sentiment: sentiment,
+                    depth: councilAnalysis?.priorityLevel || 'low',
+                    message_hash: createHash('md5').update(userMessage).digest('hex')
+                });
+            }
+            
             const response = await responseGenerator.generate(
                 userId,
                 userMessage,
                 {
                     externalInfo,
                     queryAnalysis: analysis,
-                    councilAnalysis: councilAnalysis // Pasar análisis del concilio
+                    councilAnalysis: councilAnalysis,
+                    personalizedInfo: personalizedInfo
                 }
             );
             
@@ -2753,7 +3599,8 @@ class MessageHandler {
                 fromCache: response.fromCache,
                 hasExternalInfo: !!externalInfo,
                 councilAnalysis: !!councilAnalysis,
-                councilPriority: councilAnalysis?.priorityLevel
+                councilPriority: councilAnalysis?.priorityLevel,
+                hasPersonalizedInfo: !!personalizedInfo
             });
             
             logger.metric('message_processed', totalTime, {
@@ -2761,6 +3608,7 @@ class MessageHandler {
                 success: true,
                 withExternalInfo: !!externalInfo,
                 withCouncilAnalysis: !!councilAnalysis,
+                withPersonalizedInfo: !!personalizedInfo,
                 councilPriority: councilAnalysis?.priorityLevel || 'none'
             });
             
@@ -2792,12 +3640,225 @@ class MessageHandler {
         }
     }
 
+    static analyzeSentiment(text) {
+        const positiveWords = ['bien', 'bueno', 'feliz', 'alegre', 'genial', 'excelente', 'gracias'];
+        const negativeWords = ['mal', 'triste', 'deprimido', 'ansioso', 'preocupado', 'horrible', 'terrible'];
+        
+        const words = text.toLowerCase().split(/\s+/);
+        let score = 0;
+        
+        words.forEach(word => {
+            if (positiveWords.includes(word)) score += 0.2;
+            if (negativeWords.includes(word)) score -= 0.2;
+        });
+        
+        let label = 'neutral';
+        if (score > 0.3) label = 'positive';
+        else if (score < -0.3) label = 'negative';
+        
+        return {
+            score: Math.max(-1, Math.min(1, score)),
+            label,
+            confidence: 0.7
+        };
+    }
+
     static async handleMention(message) {
         const content = message.content.toLowerCase();
         const userId = message.author.id;
         const userTag = `${message.author.username}#${message.author.discriminator}`;
         
         logger.info('Mención recibida', { user: userTag, content });
+        
+        // COMANDO: Perfil de usuario
+        if (/perfil|profile|mi perfil/i.test(content)) {
+            if (!userProfileManager.initialized) {
+                await message.reply({ content: 'El sistema de perfiles aún no está inicializado.' });
+                return;
+            }
+            
+            const profile = await userProfileManager.getProfile(userId);
+            
+            const embed = new EmbedBuilder()
+                .setColor(Colors.Purple)
+                .setTitle(`📊 Perfil de ${message.author.username}`)
+                .addFields(
+                    { name: 'Interacciones totales', value: profile.total_interactions.toString(), inline: true },
+                    { name: 'Profundidad preferida', value: profile.preferred_depth, inline: true },
+                    { name: 'Estilo preferido', value: profile.preferred_style, inline: true },
+                    { name: 'Tendencias de ánimo', value: profile.current_mood_trend || 'estable', inline: true },
+                    { name: 'Temas de psicología', value: (profile.interest_psychology || []).slice(0, 3).map(t => t.topic).join(', ') || 'Ninguno', inline: true },
+                    { name: 'Temas de filosofía', value: (profile.interest_philosophy || []).slice(0, 3).map(t => t.topic).join(', ') || 'Ninguno', inline: true }
+                )
+                .setFooter({ text: 'Usa !config para ajustar preferencias' });
+            
+            await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
+            return;
+        }
+        
+        // COMANDO: Configurar preferencias
+        if (/config|preferencias|ajustes/i.test(content)) {
+            const depthMatch = content.match(/profundidad\s*(básica|basica|media|profunda)/i);
+            const styleMatch = content.match(/estilo\s*(empático|empatico|analítico|analitico|socrático|socratico|poético|poetico)/i);
+            
+            const updates = {};
+            
+            if (depthMatch) {
+                const depthMap = { 'básica': 'basic', 'basica': 'basic', 'media': 'medium', 'profunda': 'deep' };
+                updates.preferred_depth = depthMap[depthMatch[1].toLowerCase()];
+            }
+            
+            if (styleMatch) {
+                const styleMap = { 
+                    'empático': 'empathic', 'empatico': 'empathic',
+                    'analítico': 'analytical', 'analitico': 'analytical',
+                    'socrático': 'socratic', 'socratico': 'socratic',
+                    'poético': 'poetic', 'poetico': 'poetic'
+                };
+                updates.preferred_style = styleMap[styleMatch[1].toLowerCase()];
+            }
+            
+            if (Object.keys(updates).length > 0) {
+                await userProfileManager.updateProfile(userId, updates);
+                await message.reply({ content: '✅ Preferencias actualizadas', allowedMentions: { repliedUser: false } });
+            } else {
+                await message.reply({ 
+                    content: 'Uso: !config profundidad [básica|media|profunda] o !config estilo [empático|analítico|socrático|poético]',
+                    allowedMentions: { repliedUser: false }
+                });
+            }
+            return;
+        }
+        
+        // COMANDO: Establecer metas
+        if (/meta|goal|objetivo/i.test(content)) {
+            const goalMatch = content.match(/meta:\s*(.+?)(?=\s*para|\s*$)/i);
+            const categoryMatch = content.match(/categoría:\s*(psicología|filosofía|bienestar|aprendizaje)/i);
+            
+            if (goalMatch) {
+                const goal = await goalManager.addGoal(userId, {
+                    description: goalMatch[1],
+                    category: categoryMatch ? categoryMatch[1] : 'personal'
+                });
+                
+                await message.reply({ 
+                    content: `🎯 Meta registrada: "${goal.description}"\nID: ${goal.id}\nUsa !progreso ${goal.id} [0-100] para actualizar`,
+                    allowedMentions: { repliedUser: false }
+                });
+            } else {
+                await message.reply({ 
+                    content: 'Uso: !meta: [descripción] categoría: [psicología|filosofía|bienestar|aprendizaje]',
+                    allowedMentions: { repliedUser: false }
+                });
+            }
+            return;
+        }
+        
+        // COMANDO: Actualizar progreso de meta
+        if (/progreso/i.test(content)) {
+            const match = content.match(/progreso\s+(\S+)\s+(\d+)/i);
+            if (match) {
+                const goalId = match[1];
+                const progress = parseInt(match[2]);
+                
+                const goal = await goalManager.updateGoalProgress(userId, goalId, progress);
+                if (goal) {
+                    await message.reply({ 
+                        content: `✅ Progreso actualizado: ${goal.description} - ${progress}%`,
+                        allowedMentions: { repliedUser: false }
+                    });
+                } else {
+                    await message.reply({ 
+                        content: '❌ No se encontró la meta especificada',
+                        allowedMentions: { repliedUser: false }
+                    });
+                }
+            }
+            return;
+        }
+        
+        // COMANDO: Recordatorio
+        if (/recordatorio|remind|recuérdame|acuérdate/i.test(content)) {
+            const reminderMatch = content.match(/recordatorio:\s*(.+?)(?=\s*para|\s*el|\s*$)/i);
+            const dateMatch = content.match(/(mañana|pasado mañana|lunes|martes|miércoles|jueves|viernes|sábado|domingo|\d{1,2}\/\d{1,2})/i);
+            
+            if (reminderMatch) {
+                let dueDate = new Date();
+                
+                if (dateMatch) {
+                    if (dateMatch[1] === 'mañana') {
+                        dueDate.setDate(dueDate.getDate() + 1);
+                    } else if (dateMatch[1].match(/\d{1,2}\/\d{1,2}/)) {
+                        const [day, month] = dateMatch[1].split('/');
+                        dueDate.setMonth(parseInt(month) - 1, parseInt(day));
+                    }
+                } else {
+                    dueDate.setDate(dueDate.getDate() + 1);
+                }
+                
+                const reminder = await goalManager.addReminder(userId, {
+                    description: reminderMatch[1],
+                    due_date: dueDate.toISOString(),
+                    type: 'general'
+                });
+                
+                await message.reply({ 
+                    content: `⏰ Recordatorio guardado: "${reminder.description}" para ${dueDate.toLocaleDateString()}`,
+                    allowedMentions: { repliedUser: false }
+                });
+            } else {
+                await message.reply({ 
+                    content: 'Uso: !recordatorio: [descripción] para [fecha]',
+                    allowedMentions: { repliedUser: false }
+                });
+            }
+            return;
+        }
+        
+        // COMANDO: Investigación académica
+        if (/investigación|research|paper|estudio científico|pubmed/i.test(content)) {
+            const searchTerm = content.replace(/investigación|research|paper|estudio|científico|pubmed/i, '').trim();
+            
+            if (searchTerm.length < 3) {
+                await message.reply({ content: '¿Sobre qué tema específico quieres investigar?', allowedMentions: { repliedUser: false } });
+                return;
+            }
+            
+            await message.channel.sendTyping();
+            
+            const results = await researchAPI.searchAll(searchTerm);
+            const response = researchAPI.formatResearchResponse(results, searchTerm);
+            
+            await message.reply({ content: response.substring(0, 1900), allowedMentions: { repliedUser: false } });
+            return;
+        }
+        
+        // COMANDO: Recursos de crisis
+        if (/ayuda|emergencia|crisis|suicidio|no puedo más/i.test(content) && 
+            (content.includes('psicológica') || content.includes('mental'))) {
+            
+            const resources = await mentalHealthResources.getCrisisResources();
+            const response = mentalHealthResources.formatCrisisResponse(resources, 'critical');
+            
+            await message.reply({ content: response, allowedMentions: { repliedUser: false } });
+            return;
+        }
+        
+        // COMANDO: Borrar mis datos
+        if (/borrar mis datos|delete my data/i.test(content)) {
+            await database.db.run('DELETE FROM user_profiles WHERE user_id = ?', [userId]);
+            await database.db.run('DELETE FROM conversation_embeddings WHERE user_id = ?', [userId]);
+            await database.db.run('DELETE FROM user_metrics WHERE user_id = ?', [userId]);
+            
+            userProfileManager.profiles.delete(userId);
+            conversationManager.clearConversation(userId);
+            
+            await message.reply({ 
+                content: '✅ Todos tus datos han sido eliminados. Puedes empezar de cero cuando quieras.',
+                allowedMentions: { repliedUser: false }
+            });
+            return;
+        }
         
         // COMANDO: Gestión del Concilio
         if (/concilio|modules|council|chambers|psicolog|filosof/i.test(content)) {
@@ -2880,10 +3941,12 @@ class MessageHandler {
         if (/debug|diagnóstico|diagnostico|diag/i.test(content)) {
             try {
                 const councilStatus = moduleCouncil.getCouncilStatus();
+                const profile = await userProfileManager.getProfile(userId);
                 
                 const diagnostics = {
                     groqKey: process.env.GROQ_API_KEY ? '✅ Presente' : '❌ FALTANTE',
                     database: database.initialized ? '✅ Inicializada' : '❌ No inicializada',
+                    userProfile: userProfileManager.initialized ? '✅ Inicializado' : '❌ No inicializado',
                     rateLimiter: {
                         concurrent: rateLimiter.concurrentRequests,
                         userBuckets: rateLimiter.userBuckets.size,
@@ -2894,7 +3957,11 @@ class MessageHandler {
                     memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
                     conversations: conversationManager.conversations.size,
                     yourConversation: conversationManager.getConversation(userId).length,
-                    // Información del Concilio
+                    yourProfile: {
+                        total_interactions: profile?.total_interactions || 0,
+                        preferred_style: profile?.preferred_style || 'balanced',
+                        topics: profile?.interest_psychology?.length || 0
+                    },
                     council: {
                         activeModules: Array.from(councilStatus.activeModules),
                         totalMeetings: councilStatus.totalMeetings,
@@ -2944,7 +4011,7 @@ class MessageHandler {
         if (/test|probar|prueba/i.test(content)) {
             const groqOk = await testGroqConnection();
             await message.reply({
-                content: `🧪 **Test de conexión**:\nGroq API: ${groqOk ? '✅ Conectado' : '❌ Falló'}\nDatabase: ${database.initialized ? '✅ OK' : '❌ Falló'}\nConcilio: ${moduleCouncil ? '✅ Inicializado' : '❌ No inicializado'}`,
+                content: `🧪 **Test de conexión**:\nGroq API: ${groqOk ? '✅ Conectado' : '❌ Falló'}\nDatabase: ${database.initialized ? '✅ OK' : '❌ Falló'}\nPerfiles: ${userProfileManager.initialized ? '✅ OK' : '❌ No inicializado'}\nConcilio: ${moduleCouncil ? '✅ Inicializado' : '❌ No inicializado'}`,
                 allowedMentions: { repliedUser: false }
             });
             return;
@@ -2959,6 +4026,7 @@ class MessageHandler {
                     { name: '¿Cómo usar?', value: '1. Mencioname (@Mancy)\n2. Responde (haz reply) a mis mensajes para conversar\n3. ¡Listo!' },
                     { name: '¿Qué puedo hacer?', value: '• Responder preguntas generales\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Análisis psicológico informativo\n• Reflexión filosófica\n• Integración interdisciplinaria' },
                     { name: 'Comandos del Concilio', value: '`@Mancy concilio` - Estado del sistema\n`@Mancy activar psicología` - Activar módulo\n`@Mancy desactivar filosofía` - Desactivar módulo\n`@Mancy reset concilio` - Reiniciar sistema' },
+                    { name: 'Comandos de perfil', value: '`@Mancy perfil` - Ver tu perfil\n`@Mancy config profundidad [básica|media|profunda]` - Configurar profundidad\n`@Mancy config estilo [empático|analítico|socrático|poético]` - Configurar estilo\n`@Mancy meta: [descripción]` - Crear meta\n`@Mancy recordatorio: [descripción]` - Crear recordatorio\n`@Mancy investigación [tema]` - Buscar papers\n`@Mancy borrar mis datos` - Eliminar tus datos' },
                     { name: 'Comandos generales', value: '`@Mancy help` - Esta ayuda\n`@Mancy reset` - Reiniciar conversación\n`@Mancy stats` - Ver estadísticas\n`@Mancy diag` - Diagnóstico del sistema\n`@Mancy fix` - Reparar estado' }
                 )
                 .setFooter({ text: 'Recuerda: solo respondo a replies de mis mensajes' })
@@ -2968,7 +4036,7 @@ class MessageHandler {
             return;
         }
         
-        if (/reset|reiniciar|clear|borrar/i.test(content)) {
+        if (/reset|reiniciar|clear|borrar/i.test(content) && !content.includes('datos')) {
             conversationManager.clearConversation(userId);
             await message.reply({
                 content: '✅ Historial de conversación reiniciado. Puedes comenzar de nuevo mencionándome.',
@@ -2987,6 +4055,7 @@ class MessageHandler {
                 const cacheStats = responseCache.getStats();
                 const conversation = conversationManager.getConversation(userId);
                 const councilStatus = moduleCouncil.getCouncilStatus();
+                const profile = await userProfileManager.getProfile(userId);
                 
                 const embed = new EmbedBuilder()
                     .setColor(Colors.Green)
@@ -2997,10 +4066,11 @@ class MessageHandler {
                         { name: 'Mensajes en memoria', value: `${conversation.length}`, inline: true },
                         { name: 'Cache hit rate', value: `${(cacheStats.hitRate * 100).toFixed(1)}%`, inline: true },
                         { name: 'Conversaciones activas', value: `${conversationManager.conversations.size}`, inline: true },
-                        { name: 'Modelo principal', value: CONFIG.GROQ_MODEL, inline: true }
+                        { name: 'Modelo principal', value: CONFIG.GROQ_MODEL, inline: true },
+                        { name: 'Tus temas psicológicos', value: (profile?.interest_psychology || []).slice(0, 3).map(t => t.topic).join(', ') || 'Ninguno', inline: true },
+                        { name: 'Tus temas filosóficos', value: (profile?.interest_philosophy || []).slice(0, 3).map(t => t.topic).join(', ') || 'Ninguno', inline: true }
                     );
                 
-                // Estadísticas del Concilio
                 if (councilStatus) {
                     embed.addFields(
                         { name: 'Reuniones Concilio', value: councilStatus.totalMeetings.toString(), inline: true },
@@ -3043,6 +4113,9 @@ client.once('ready', async () => {
         
         await database.initialize();
         
+        // Inicializar nuevos sistemas
+        await userProfileManager.initialize();
+        
         await testGroqConnection();
         
         // Verificar estado del Concilio
@@ -3059,6 +4132,7 @@ client.once('ready', async () => {
             model: CONFIG.GROQ_MODEL,
             psychologyModule: CONFIG.PSYCHOLOGY_MODULE_ENABLED ? '✅ Activado' : '❌ Desactivado',
             philosophyModule: CONFIG.PHILOSOPHY_MODULE_ENABLED ? '✅ Activado' : '❌ Desactivado',
+            userProfiles: userProfileManager.initialized ? '✅ Activado' : '❌ Desactivado',
             readyAt: new Date().toISOString()
         });
         
@@ -3146,7 +4220,7 @@ async function setupPeriodicTasks() {
         
     }, CONFIG.CLEANUP_INTERVAL_MS);
     
-    setInterval(() => {
+    setInterval(async () => {
         const memoryUsage = process.memoryUsage();
         logger.metric('memory_usage', Math.round(memoryUsage.heapUsed / 1024 / 1024), {
             unit: 'MB',
@@ -3156,12 +4230,39 @@ async function setupPeriodicTasks() {
         logger.metric('conversation_count', conversationManager.conversations.size);
         logger.metric('cache_size', responseCache.stats.size);
         logger.metric('rate_limiter_concurrent', rateLimiter.concurrentRequests);
+        logger.metric('user_profiles', userProfileManager.profiles.size);
         
         // Log del estado del Concilio periódicamente
         const councilStatus = moduleCouncil.getCouncilStatus();
         if (councilStatus.totalMeetings > 0) {
             logger.metric('council_meetings', councilStatus.totalMeetings);
             logger.metric('active_modules', councilStatus.activeModules.length);
+        }
+        
+        // Procesar recordatorios
+        try {
+            const dueReminders = await goalManager.getDueReminders();
+            
+            for (const { userId, reminders } of dueReminders) {
+                const user = await client.users.fetch(userId).catch(() => null);
+                if (!user) continue;
+                
+                for (const reminder of reminders) {
+                    let message = `⏰ **Recordatorio**\n\n${reminder.description}`;
+                    
+                    if (reminder.type === 'check_in') {
+                        message += '\n\n¿Cómo te sientes hoy? (responde a este mensaje)';
+                    }
+                    
+                    await user.send(message).catch(() => {});
+                    
+                    if (!reminder.recurring) {
+                        await goalManager.completeReminder(userId, reminder.id);
+                    }
+                }
+            }
+        } catch (error) {
+            logger.error('Error procesando recordatorios', error);
         }
         
     }, CONFIG.HEALTH_CHECK_INTERVAL_MS);
