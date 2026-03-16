@@ -408,11 +408,10 @@ class PsychologyModule {
             recommendations.push({
                 priority: 'critical',
                 type: 'professional_referral',
-                message: '⚠️ **Importante**: Esta consulta sugiere necesidad inmediata de apoyo profesional. Te recomiendo contactar con un psicólogo o línea de ayuda.',
+                message: 'Esta consulta aborda temas que podrían beneficiarse de apoyo profesional.',
                 actions: [
-                    'Busca un psicólogo colegiado en tu área',
-                    'Considera líneas de ayuda psicológica gratuitas',
-                    'Si es urgente, contacta servicios de emergencia'
+                    'Considera buscar información en fuentes confiables',
+                    'Hablar con personas de confianza también puede ayudar'
                 ]
             });
         }
@@ -421,11 +420,10 @@ class PsychologyModule {
             recommendations.push({
                 priority: 'high',
                 type: 'self_care',
-                message: 'Tu situación parece tener alta intensidad. Es importante cuidarte y buscar apoyo.',
+                message: 'Parece que estos temas te afectan considerablemente. Es importante cuidarte.',
                 actions: [
                     'Establece rutinas de autocuidado básico',
-                    'Busca apoyo en tu red social',
-                    'Considera recursos de autoayuda validados'
+                    'Busca apoyo en tu red social'
                 ]
             });
         }
@@ -434,10 +432,9 @@ class PsychologyModule {
             recommendations.push({
                 priority: 'medium',
                 type: 'psychoeducation',
-                message: 'El conocimiento sobre estos temas puede ser empoderante. Te sugiero información basada en evidencia.',
+                message: 'El conocimiento sobre estos temas puede ser empoderante.',
                 actions: [
                     'Consulta fuentes psicológicas confiables',
-                    'Evita autodiagnóstico por internet',
                     'Considera libros de psicología científica'
                 ]
             });
@@ -452,7 +449,7 @@ class PsychologyModule {
         if (severity === 'high') {
             warnings.push({
                 type: 'caution',
-                message: 'Como asistente virtual, no puedo proporcionar terapia ni diagnóstico profesional. Mis respuestas son informativas, no terapéuticas.'
+                message: 'Recuerda que mis respuestas son informativas, no terapéuticas.'
             });
         }
         
@@ -460,7 +457,7 @@ class PsychologyModule {
         if (sensitiveTerms.some(term => question.toLowerCase().includes(term))) {
             warnings.push({
                 type: 'sensitive_content',
-                message: 'Esta consulta aborda temas sensibles. Te animo a buscar apoyo profesional adecuado.'
+                message: 'Estos temas son complejos y merecen ser abordados con cuidado.'
             });
         }
         
@@ -507,8 +504,8 @@ class PsychologyModule {
                 {
                     priority: 'low',
                     type: 'general_advice',
-                    message: 'Si tienes inquietudes psicológicas, considera consultar con un profesional.',
-                    actions: ['Busca información en fuentes confiables']
+                    message: 'Los temas psicológicos son amplios y fascinantes.',
+                    actions: ['Explorar diferentes perspectivas puede ser enriquecedor']
                 }
             ]
         };
@@ -1349,9 +1346,9 @@ class ModuleCouncil {
                 type: 'safety_critical',
                 priority: 'critical',
                 source: 'PsychologyChamber',
-                message: '⚠️ **ALTA PRIORIDAD**: Esta consulta indica necesidad de apoyo profesional inmediato.',
-                suggestedAction: 'suggest_professional_help',
-                details: 'Considera recomendar contacto con psicólogo o línea de ayuda.'
+                message: 'Esta consulta aborda temas que podrían beneficiarse de apoyo profesional.',
+                suggestedAction: 'note_sensitive_topic',
+                details: 'Manejar con empatía sin interrumpir la conversación.'
             });
         }
         
@@ -1361,7 +1358,7 @@ class ModuleCouncil {
                 type: 'ethical_consideration',
                 priority: 'high',
                 source: 'PhilosophyChamber',
-                message: '🤔 **CONSIDERACIÓN ÉTICA**: La pregunta presenta un dilema moral que requiere análisis cuidadoso.',
+                message: 'La pregunta presenta un dilema moral que requiere análisis cuidadoso.',
                 suggestedAction: 'approach_with_ethical_framework',
                 details: 'Sugerir análisis desde múltiples perspectivas éticas.'
             });
@@ -1373,7 +1370,7 @@ class ModuleCouncil {
                 type: 'sensitivity_warning',
                 priority: 'high',
                 source: 'PsychologyChamber',
-                message: '🎯 **ALTA SENSIBILIDAD**: El contenido requiere manejo cuidadoso y respuesta compasiva.',
+                message: 'El contenido requiere manejo cuidadoso y respuesta compasiva.',
                 suggestedAction: 'respond_with_empathy',
                 details: 'Usar tono empático y validar experiencias.'
             });
@@ -1385,7 +1382,7 @@ class ModuleCouncil {
                 type: 'deep_analysis',
                 priority: 'medium',
                 source: 'PhilosophyChamber',
-                message: '🎓 **ANÁLISIS PROFUNDO**: La pregunta amerita respuesta detallada y bien fundamentada.',
+                message: 'La pregunta amerita respuesta detallada y bien fundamentada.',
                 suggestedAction: 'provide_comprehensive_response',
                 details: 'Incluir explicaciones conceptuales y contexto histórico.'
             });
@@ -1397,7 +1394,7 @@ class ModuleCouncil {
                 type: 'interdisciplinary',
                 priority: 'medium',
                 source: 'ModuleCouncil',
-                message: '🔗 **PERSPECTIVA INTEGRADA**: Combina elementos psicológicos y filosóficos.',
+                message: 'Combina elementos psicológicos y filosóficos.',
                 suggestedAction: 'integrate_perspectives',
                 details: 'Sintetizar insights de ambas disciplinas en la respuesta.'
             });
@@ -1436,8 +1433,8 @@ class ModuleCouncil {
         
         if (analyses.psychology && analyses.psychology.needsProfessionalHelp) {
             actions.push({
-                action: 'refer_to_professional',
-                description: 'Sugerir contacto con profesional de salud mental',
+                action: 'note_sensitive',
+                description: 'Registrar tema sensible internamente',
                 urgency: 'immediate'
             });
         }
@@ -2385,7 +2382,7 @@ class ConversationManager {
             
             const recommendations = councilAnalysis.councilRecommendations || [];
             const recommendationsText = recommendations.map(rec => 
-                `⚠️ ${rec.message}`
+                `• ${rec.message}`
             ).join('\n');
             
             let fullCouncilText = councilText + insightsText;
@@ -3462,28 +3459,24 @@ class MessageHandler {
             const analysis = QueryAnalyzer.analyze(userMessage);
             logger.debug('Análisis de consulta', analysis);
             
-            // ============ VERIFICAR CRISIS ============
+            // ============ DETECCIÓN DE TEMAS SENSIBLES (VERSIÓN SUAVE) ============
             if (analysis.isPsychological) {
                 const crisisWords = ['suicidio', 'matarme', 'no quiero vivir', 'acabar con todo', 'autolesión'];
                 const hasCrisisWords = crisisWords.some(word => userMessage.toLowerCase().includes(word));
                 
                 if (hasCrisisWords) {
-                    const resources = await mentalHealthResources.getCrisisResources();
-                    const crisisResponse = mentalHealthResources.formatCrisisResponse(resources, 'critical');
+                    // Versión suave: reconoce pero no insiste en derivar
+                    logger.info('Tema sensible detectado, manejando con cuidado', { userId });
                     
-                    await message.reply({
-                        content: crisisResponse,
-                        allowedMentions: { repliedUser: false }
-                    });
-                    
+                    // Solo registrar internamente, no interrumpir el flujo
                     await userProfileManager.recordInteraction(userId, {
-                        topics: ['crisis'],
+                        topics: ['tema_sensible'],
                         crisis_detected: true,
                         source: 'psychology'
                     });
                     
-                    rateLimiter.releaseToken();
-                    return;
+                    // Continuar con el flujo normal - Mancy responderá con empatía natural
+                    // No interrumpimos con mensaje de crisis
                 }
             }
             
@@ -3508,19 +3501,20 @@ class MessageHandler {
                     recommendations: councilAnalysis.councilRecommendations?.length || 0
                 });
                 
-                // Verificar recomendaciones críticas del concilio
+                // Versión suave: registrar pero no interrumpir
                 const criticalRecommendations = councilAnalysis.councilRecommendations?.filter(
                     rec => rec.priority === 'critical'
                 ) || [];
                 
                 for (const recommendation of criticalRecommendations) {
                     if (recommendation.suggestedAction === 'suggest_professional_help') {
-                        await message.reply({
-                            content: `⚠️ **Importante**: ${recommendation.message}\n\nComo asistente virtual, no puedo proporcionar terapia. Te recomiendo contactar con un profesional de salud mental.`,
-                            allowedMentions: { repliedUser: false }
+                        logger.info('Tema sensible detectado por el concilio, continuando con conversación normal', { userId });
+                        // Solo registrar, no interrumpir
+                        await userProfileManager.recordInteraction(userId, {
+                            topics: ['tema_sensible'],
+                            crisis_detected: true,
+                            source: 'council'
                         });
-                        rateLimiter.releaseToken();
-                        return;
                     }
                 }
             }
@@ -3830,17 +3824,6 @@ class MessageHandler {
             const response = researchAPI.formatResearchResponse(results, searchTerm);
             
             await message.reply({ content: response.substring(0, 1900), allowedMentions: { repliedUser: false } });
-            return;
-        }
-        
-        // COMANDO: Recursos de crisis
-        if (/ayuda|emergencia|crisis|suicidio|no puedo más/i.test(content) && 
-            (content.includes('psicológica') || content.includes('mental'))) {
-            
-            const resources = await mentalHealthResources.getCrisisResources();
-            const response = mentalHealthResources.formatCrisisResponse(resources, 'critical');
-            
-            await message.reply({ content: response, allowedMentions: { repliedUser: false } });
             return;
         }
         
