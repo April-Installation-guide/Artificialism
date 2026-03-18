@@ -117,6 +117,502 @@ class Logger {
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
+// ==================== ANALIZADOR DE EMOCIONES AVANZADO ====================
+class EmotionalAnalyzer {
+    constructor() {
+        this.emotionalPatterns = {
+            joy: {
+                patterns: [
+                    /\bfeliz\b/i, /\balegr[ae]\b/i, /\bcontent[oa]\b/i, /\bfantástic[oa]\b/i,
+                    /\bmaravillos[oa]\b/i, /\bgenial\b/i, /\bexcelente\b/i, /\bme siento bien\b/i,
+                    /\bme hace ilusión\b/i, /\bqué bien\b/i, /\bestoy disfrutando\b/i
+                ],
+                primary: 'joy',
+                nuance: 'positive',
+                responseGuidance: 'warm_celebratory',
+                humanDescription: 'alegría genuina'
+            },
+            
+            gratitude: {
+                patterns: [
+                    /\bgracias\b/i, /\bte agradezco\b/i, /\bmuy amable\b/i, /\bte lo agradezco\b/i,
+                    /\baprecio\b/i, /\bte lo gradezco\b/i, /\bque amable\b/i, /\beres un sol\b/i,
+                    /\bte pasaste\b/i, /\bmuchas gracias\b/i, /\binfinitas gracias\b/i
+                ],
+                primary: 'gratitude',
+                nuance: 'warm',
+                responseGuidance: 'humble_warm',
+                humanDescription: 'gratitud sincera'
+            },
+            
+            deepSadness: {
+                patterns: [
+                    /\bno puedo más\b/i, /\bestoy destrozad[oa]\b/i, /\bno tengo fuerzas\b/i,
+                    /\bme duele el alma\b/i, /\bno le encuentro sentido\b/i, /\bestoy vací[oa]\b/i,
+                    /\bme rompió el corazón\b/i, /\bno sé cómo seguir\b/i, /\bme siento perdid[oa]\b/i,
+                    /\bno valgo nada\b/i, /\bno sirvo para nada\b/i
+                ],
+                primary: 'deep_sadness',
+                nuance: 'vulnerable',
+                responseGuidance: 'gentle_holding',
+                humanDescription: 'tristeza profunda que necesita contención',
+                requiresCare: true
+            },
+            
+            sadness: {
+                patterns: [
+                    /\btriste\b/i, /\bdesanimad[oa]\b/i, /\bapenad[oa]\b/i, /\bdecaíd[oa]\b/i,
+                    /\bme siento mal\b/i, /\bno estoy bien\b/i, /\bestoy down\b/i, /\bmelancol[íi]a\b/i,
+                    /\bnublado\b/i, /\bpesadumbre\b/i, /\bañoranza\b/i
+                ],
+                primary: 'sadness',
+                nuance: 'melancholic',
+                responseGuidance: 'warm_understanding',
+                humanDescription: 'tristeza o melancolía',
+                requiresCare: true
+            },
+            
+            anxiety: {
+                patterns: [
+                    /\bansied[ae]d\b/i, /\bnervios[oa]\b/i, /\bpreocupad[oa]\b/i, /\banguistia\b/i,
+                    /\bno puedo dormir\b/i, /\bme come la cabeza\b/i, /\bestoy intranquil[oa]\b/i,
+                    /\bme da miedo\b/i, /\btens[io]ón\b/i, /\binquietud\b/i, /\bme pongo mal\b/i,
+                    /\bpensamientos intrusivos\b/i, /\bno dejo de pensar\b/i
+                ],
+                primary: 'anxiety',
+                nuance: 'restless',
+                responseGuidance: 'calm_grounding',
+                humanDescription: 'ansiedad o inquietud',
+                requiresCare: true
+            },
+            
+            fear: {
+                patterns: [
+                    /\btengo miedo\b/i, /\bme asusta\b/i, /\baterrad[oa]\b/i, /\bhorror\b/i,
+                    /\bme aterra\b/i, /\bme da pánico\b/i, /\bme horroriza\b/i, /\btemor\b/i,
+                    /\bno quiero que pase\b/i, /\bqué miedo\b/i, /\bme paraliza\b/i
+                ],
+                primary: 'fear',
+                nuance: 'scared',
+                responseGuidance: 'protective_gentle',
+                humanDescription: 'miedo o temor',
+                requiresCare: true
+            },
+            
+            anger: {
+                patterns: [
+                    /\bestoy enojad[oa]\b/i, /\bme enfada\b/i, /\brabia\b/i, /\bme saca de quicio\b/i,
+                    /\bno lo soporto\b/i, /\bme molesta\b/i, /\bhart[oa]\b/i, /\bme hierve la sangre\b/i,
+                    /\bindignaci[óo]n\b/i, /\bfrustraci[óo]n\b/i, /\bno es justo\b/i
+                ],
+                primary: 'anger',
+                nuance: 'frustrated',
+                responseGuidance: 'calm_validating',
+                humanDescription: 'enfado o frustración',
+                requiresCare: true
+            },
+            
+            confusion: {
+                patterns: [
+                    /\bno entiendo\b/i, /\bconfus[oa]\b/i, /\bno lo comprendo\b/i, /\bme lío\b/i,
+                    /\bno sé qué hacer\b/i, /\bno sé qué pensar\b/i, /\bestoy perdid[oa]\b/i,
+                    /\bno me aclaro\b/i, /\bno le veo sentido\b/i, /\blioso\b/i
+                ],
+                primary: 'confusion',
+                nuance: 'lost',
+                responseGuidance: 'clarifying_patient',
+                humanDescription: 'confusión o desorientación',
+                requiresCare: false
+            },
+            
+            deepCuriosity: {
+                patterns: [
+                    /\bpor qué existimos\b/i, /\bsentido de la vida\b/i, /\bqué es real\b/i,
+                    /\blibre albedrío\b/i, /\bqué hay después\b/i, /\bsignificado\b/i,
+                    /\bpropósito\b/i, /\bverdad absoluta\b/i, /\bnaturaleza de la realidad\b/i,
+                    /\bconciencia\b/i, /\bexistencia\b/i
+                ],
+                primary: 'curiosity',
+                nuance: 'philosophical',
+                responseGuidance: 'philosophical_inviting',
+                humanDescription: 'curiosidad profunda existencial'
+            },
+            
+            casualCuriosity: {
+                patterns: [
+                    /\bqu[ée] es\b/i, /\bc[oó]mo funciona\b/i, /\bqu[ée] significa\b/i,
+                    /\bexplicame\b/i, /\bdime sobre\b/i, /\bcu[áa]ndo pas[oó]\b/i,
+                    /\bqui[ée]n fue\b/i, /\bhistoria de\b/i, /\bme pregunto\b/i,
+                    /\btengo curiosidad\b/i, /\bqu[ée] sabes de\b/i
+                ],
+                primary: 'curiosity',
+                nuance: 'casual',
+                responseGuidance: 'educational_engaging',
+                humanDescription: 'curiosidad natural por aprender'
+            },
+            
+            hope: {
+                patterns: [
+                    /\besperanza\b/i, /\bilusionad[oa]\b/i, /\bquiero creer\b/i, /\balgo bueno\b/i,
+                    /\bva a mejorar\b/i, /\btengo fe\b/i, /\bconfío en que\b/i, /\bme aferro a\b/i,
+                    /\bluz al final\b/i, /\bpuede ser que\b/i
+                ],
+                primary: 'hope',
+                nuance: 'optimistic',
+                responseGuidance: 'supportive_encouraging',
+                humanDescription: 'esperanza o ilusión'
+            },
+            
+            loneliness: {
+                patterns: [
+                    /\bsoledad\b/i, /\bsolitario\b/i, /\bme siento sol[oa]\b/i, /\bno tengo a nadie\b/i,
+                    /\bnadie me entiende\b/i, /\bestoy sol[oa]\b/i, /\bme abandonaron\b/i,
+                    /\bme siento excluid[oa]\b/i, /\bno encajo\b/i, /\bincomprendid[oa]\b/i
+                ],
+                primary: 'loneliness',
+                nuance: 'isolated',
+                responseGuidance: 'warm_connecting',
+                humanDescription: 'sentimiento de soledad',
+                requiresCare: true
+            },
+            
+            exhaustion: {
+                patterns: [
+                    /\bestoy cansad[oa]\b/i, /\bno tengo energ[ií]as\b/i, /\bagotad[oa]\b/i,
+                    /\bno doy más\b/i, /\bno puedo con todo\b/i, /\bdesgastad[oa]\b/i,
+                    /\bsobrecargad[oa]\b/i, /\bquemad[oa]\b/i, /\bburnout\b/i, /\bnecesito descansar\b/i
+                ],
+                primary: 'exhaustion',
+                nuance: 'tired',
+                responseGuidance: 'gentle_validating',
+                humanDescription: 'agotamiento físico o emocional',
+                requiresCare: true
+            },
+            
+            surprise: {
+                patterns: [
+                    /\bqu[ée] sorpresa\b/i, /\bno me lo esperaba\b/i, /\bwow\b/i, /\bguau\b/i,
+                    /\bme dejaste de piedra\b/i, /\bno me lo puedo creer\b/i, /\bincre[íi]ble\b/i,
+                    /\bno me lo imaginaba\b/i, /\bme asombr[oa]\b/i
+                ],
+                primary: 'surprise',
+                nuance: 'astonished',
+                responseGuidance: 'curious_engaged',
+                humanDescription: 'sorpresa o asombro'
+            }
+        };
+
+        this.crisisIndicators = [
+            /\bsuicid[aiio]\b/i,
+            /\bmatarme\b/i,
+            /\bquitarme la vida\b/i,
+            /\bno quiero vivir\b/i,
+            /\bacabar con todo\b/i,
+            /\bdesaparecer\b/i,
+            /\bme quiero morir\b/i,
+            /\bda[ñn]arme\b/i,
+            /\bcortarme\b/i,
+            /\blesionarme\b/i,
+            /\bhacer[me] daño\b/i,
+            /\bno puedo seguir así\b/i,
+            /\besto no tiene sentido\b/i,
+            /\bno merezco vivir\b/i,
+            /\bsoy una carga\b/i
+        ];
+
+        this.intensifiers = {
+            very: [/\bmuch[oa]\b/i, /\bbastante\b/i, /\bdemasiad[oa]\b/i, /\bsuper\b/i, /\bre\b/i, /\btan\b/i],
+            extreme: [/\binsoportable\b/i, /\binsufrible\b/i, /\binsostenible\b/i, /\binaguantable\b/i, /\bextremadamente\b/i],
+            slight: [/\bun poco\b/i, /\balgo\b/i, /\bligeramente\b/i, /\blevemente\b/i, /\bquiz[áa]\b/i]
+        };
+    }
+
+    analyze(message) {
+        const originalMessage = message;
+        const normalized = message.toLowerCase();
+        
+        const hasCrisis = this.detectCrisis(normalized);
+        if (hasCrisis) {
+            return this.buildCrisisResponse(originalMessage);
+        }
+        
+        const detectedEmotions = this.detectEmotions(normalized);
+        
+        if (detectedEmotions.length === 0) {
+            return this.detectGeneralTone(normalized, originalMessage);
+        }
+        
+        const intensity = this.analyzeIntensity(normalized);
+        const primaryEmotion = this.determinePrimaryEmotion(detectedEmotions, intensity);
+        const nuance = this.detectNuance(normalized, primaryEmotion);
+        
+        return this.buildHumanEmotionalResponse(
+            primaryEmotion,
+            detectedEmotions,
+            intensity,
+            nuance,
+            hasCrisis,
+            originalMessage
+        );
+    }
+
+    detectCrisis(text) {
+        return this.crisisIndicators.some(pattern => pattern.test(text));
+    }
+
+    detectEmotions(text) {
+        const emotions = [];
+        
+        for (const [emotion, config] of Object.entries(this.emotionalPatterns)) {
+            for (const pattern of config.patterns) {
+                if (pattern.test(text)) {
+                    emotions.push({
+                        type: config.primary,
+                        nuance: config.nuance,
+                        humanDescription: config.humanDescription,
+                        requiresCare: config.requiresCare || false,
+                        pattern: pattern.source
+                    });
+                    break;
+                }
+            }
+        }
+        
+        return emotions;
+    }
+
+    analyzeIntensity(text) {
+        let intensity = 'moderate';
+        let score = 0;
+        
+        for (const word of text.split(/\s+/)) {
+            if (this.intensifiers.very.some(p => p.test(word))) score += 1;
+            if (this.intensifiers.extreme.some(p => p.test(word))) score += 2;
+            if (this.intensifiers.slight.some(p => p.test(word))) score -= 1;
+        }
+        
+        if (text.includes('!!!') || text.includes('???')) score += 1;
+        if (text.includes('...')) score -= 0.5;
+        
+        if (score >= 2) intensity = 'high';
+        else if (score <= -1) intensity = 'low';
+        else if (score <= 0.5) intensity = 'moderate';
+        
+        return intensity;
+    }
+
+    determinePrimaryEmotion(emotions, intensity) {
+        if (emotions.length === 0) return null;
+        
+        const careEmotions = emotions.filter(e => e.requiresCare);
+        if (careEmotions.length > 0) {
+            return careEmotions[0];
+        }
+        
+        return emotions[0];
+    }
+
+    detectNuance(text, primaryEmotion) {
+        const nuancePatterns = {
+            skepticism: /\bno estoy segur[oa]\b|¿seguro\?|de verdad\?|realmente\?/i,
+            despair: /\bno hay esperanza|sin salida|nada tiene sentido|todo está perdido/i,
+            relief: /\bmenos mal|por fin|qué alivio|respirar/i,
+            longing: /\bojal[áa]|si pudiera|me gustar[íi]a|qué daría por/i,
+            ambivalence: /\bpor un lado|por otro|no sé si|aunque también/i,
+            vulnerability: /\bno se lo he dicho a nadie|me da vergüenza|no sé si debería|confesar/i,
+            urgency: /\bya mismo|ahora mismo|inmediatamente|corre prisa|es urgent/i
+        };
+        
+        for (const [nuance, pattern] of Object.entries(nuancePatterns)) {
+            if (pattern.test(text)) {
+                return nuance;
+            }
+        }
+        
+        return primaryEmotion?.nuance || 'neutral';
+    }
+
+    detectGeneralTone(text, originalMessage) {
+        const isQuestion = text.includes('?') || text.includes('¿');
+        const wordCount = text.split(/\s+/).length;
+        const hasPersonalReference = /\byo\b|\bme\b|\bmi\b|\bmi[oó]|\bmía/.test(text);
+        
+        return {
+            primary: 'general',
+            nuance: isQuestion ? 'inquisitive' : 'neutral',
+            intensity: wordCount > 30 ? 'reflective' : 'casual',
+            humanDescription: isQuestion ? 'curiosidad' : 'conversación',
+            hasPersonalReference,
+            isQuestion,
+            responseGuidance: isQuestion ? 'attentive_curious' : 'open_welcoming',
+            raw: originalMessage,
+            confidence: 0.6
+        };
+    }
+
+    buildHumanEmotionalResponse(primary, allEmotions, intensity, nuance, isCrisis, originalMessage) {
+        const emotionalState = {
+            primary: primary?.type || 'general',
+            nuance: nuance,
+            intensity: intensity,
+            requiresCare: primary?.requiresCare || false,
+            isCrisis: isCrisis,
+            
+            humanReadable: this.describeEmotionHumanely(primary, intensity, nuance),
+            
+            responseGuidance: primary?.responseGuidance || this.getGuidanceForNuance(nuance),
+            
+            subEmotions: allEmotions.slice(1, 3).map(e => e.humanDescription),
+            
+            isAmbivalent: allEmotions.length > 1,
+            
+            raw: originalMessage
+        };
+        
+        if (emotionalState.isAmbivalent) {
+            emotionalState.ambivalenceDescription = this.describeAmbivalence(allEmotions);
+        }
+        
+        return emotionalState;
+    }
+
+    describeEmotionHumanely(primary, intensity, nuance) {
+        if (!primary) return 'tono neutro';
+        
+        let description = '';
+        
+        switch(intensity) {
+            case 'high': description = 'mucha '; break;
+            case 'low': description = 'un poco de '; break;
+            default: description = '';
+        }
+        
+        description += primary.humanDescription;
+        
+        if (nuance && nuance !== primary.nuance) {
+            const nuanceMap = {
+                skepticism: ' con escepticismo',
+                despair: ' con desesperanza',
+                relief: ' con alivio',
+                longing: ' con anhelo',
+                ambivalence: ' con sentimientos encontrados',
+                vulnerability: ' con vulnerabilidad',
+                urgency: ' con urgencia'
+            };
+            description += nuanceMap[nuance] || '';
+        }
+        
+        return description;
+    }
+
+    describeAmbivalence(emotions) {
+        if (emotions.length < 2) return '';
+        
+        const descriptions = emotions.slice(0, 2).map(e => e.humanDescription);
+        return `mezcla de ${descriptions.join(' y ')}`;
+    }
+
+    getGuidanceForNuance(nuance) {
+        const guidance = {
+            skepticism: 'patient_explaining',
+            despair: 'gentle_holding',
+            relief: 'warm_celebratory',
+            longing: 'empathic_understanding',
+            ambivalence: 'balanced_perspectives',
+            vulnerability: 'gentle_protective',
+            urgency: 'attentive_calm',
+            inquisitive: 'curious_engaging',
+            neutral: 'open_welcoming'
+        };
+        
+        return guidance[nuance] || 'balanced';
+    }
+
+    buildCrisisResponse(originalMessage) {
+        const immediatePatterns = [
+            /\bvoy a\s+(matarme|suicidarme|hacerlo|terminar)\b/i,
+            /\besta noche\b/i,
+            /\bahora mismo\b/i,
+            /\bya no puedo más\b/i,
+            /\badiós\b/i,
+            /\búltimo mensaje\b/i
+        ];
+        
+        const crisisLevel = immediatePatterns.some(p => p.test(originalMessage)) ? 'immediate' : 'high';
+        
+        return {
+            primary: 'crisis',
+            nuance: 'urgent_vulnerable',
+            intensity: 'critical',
+            requiresCare: true,
+            isCrisis: true,
+            humanReadable: 'profunda angustia o desesperación',
+            responseGuidance: 'gentle_urgent',
+            raw: originalMessage,
+            crisisDetected: true,
+            crisisLevel: crisisLevel
+        };
+    }
+
+    generateHumanOpener(emotionalState) {
+        if (emotionalState.isCrisis) {
+            return "Escucho el peso de tus palabras. No estás solo en este momento. A veces, cuando todo parece oscuro, compartirlo ya es un acto de valentía. ¿Hay alguien cerca con quien puedas hablar ahora mismo?";
+        }
+        
+        switch(emotionalState.primary) {
+            case 'joy':
+                return "Me alegra sentir esa luz en tus palabras. La alegría compartida se multiplica, como los destellos del sol en el agua. Cuéntame, ¿qué está alimentando esa chispa en ti?";
+                
+            case 'gratitude':
+                return "Tus palabras cálidas llegan hasta aquí. En un mundo que a veces va tan rápido, detenerse a agradecer es como hacer una pausa para respirar profundamente. Me hace bien saber que lo que comparto te llega.";
+                
+            case 'deep_sadness':
+                return "Siento el peso de lo que compartes. Esas palabras vienen de un lugar profundo. A veces, cuando todo duele, lo único que necesitamos es que alguien se siente a nuestro lado en silencio. Estoy aquí, sin prisa, escuchando.";
+                
+            case 'sadness':
+                return "La melancolía tiene esa textura suave pero pesada, como una manta de lluvia. No hace falta que estés bien todo el tiempo. ¿Hay algo específico que te tenga así o es esa niebla que a veces llega sin avisar?";
+                
+            case 'anxiety':
+                return "Esa inquietud que describes... como tener un motor encendido sin poder pararlo. La mente a veces se acelera y cuesta encontrar el freno. ¿Podemos, juntos, traer tu atención a algo sencillo, como tu respiración, solo por un momento?";
+                
+            case 'fear':
+                return "El miedo tiene esa capacidad de empequeñecernos, ¿verdad? Hace que todo parezca más grande y amenazante. Está bien tener miedo. No te voy a decir que no pase nada, pero sí que no tienes por qué enfrentarlo solo. ¿Quieres contarme más?";
+                
+            case 'anger':
+                return "Siento la fuerza de tu enfado, y tiene razón de ser. A veces la rabia viene porque algo no está bien, porque algo nos duele o nos parece injusto. No la apartes del todo; tal vez te esté diciendo algo importante.";
+                
+            case 'confusion':
+                return "La confusión es como estar en medio de la niebla: sabes que hay un camino, pero no lo ves. Y está bien no verlo claro. A veces, más que buscar respuestas, podemos empezar por entender mejor las preguntas. ¿Por dónde quieres empezar?";
+                
+            case 'curiosity':
+                if (emotionalState.nuance === 'philosophical') {
+                    return "Ah, te asomas al abismo de las grandes preguntas. Esas que no tienen una respuesta fácil, pero que nos hacen más humanos por el solo hecho de plantearlas. Me encanta que te hagas estas preguntas. ¿Qué crees tú, en el fondo?";
+                } else {
+                    return "La curiosidad es ese músculo del alma que nos mantiene vivos, ¿no crees? Me encanta cuando alguien quiere saber más. Voy a contarte lo que sé, con gusto, y si quieres profundizar en algo, solo dímelo.";
+                }
+                
+            case 'hope':
+                return "Qué hermoso es eso que dices, esa esperanza que se asoma. Como una planta que busca la luz aunque el suelo sea duro. Me alegra mucho que puedas sentirla. ¿Qué es lo que te hace mantener esa luz encendida?";
+                
+            case 'loneliness':
+                return "La soledad pesa más cuando la cargamos en silencio. Y aunque ahora mismo estés frente a una pantalla, leyendo mis palabras, quiero que sepas que no estás del todo solo. Estoy aquí, escuchándote de verdad. ¿Cómo es tu día a día con esa sensación?";
+                
+            case 'exhaustion':
+                return "Se nota el cansancio en tus palabras, como si vinieras cargando algo muy pesado durante mucho tiempo. No hace falta que lo lleves todo todo el rato. A veces, parar no es rendirse, es recoger fuerzas. ¿Puedes permitirte un descanso ahora?";
+                
+            case 'surprise':
+                return "¡Vaya! Noto esa chispa de asombro en tus palabras. Me encanta cuando la vida nos sorprende, aunque a veces nos deje sin habla. Cuéntame más, que me has picado la curiosidad felina.";
+                
+            default:
+                if (emotionalState.isQuestion) {
+                    return "Me gusta que preguntes. Esas dudas que traes, las comparto contigo con curiosidad. Voy a pensar en voz alta, a ver qué encontramos juntos.";
+                } else {
+                    return "Te escucho. A veces lo importante no es lo que decimos, sino que haya alguien al otro lado dispuesto a escuchar de verdad. Sigue, estoy aquí.";
+                }
+        }
+    }
+}
+
 // ==================== MÓDULO DE PSICOLOGÍA INTEGRADO ====================
 
 class PsychologyModule {
@@ -1579,9 +2075,6 @@ class ModuleCouncil {
 // ==================== INICIALIZAR CONCILIO ====================
 const moduleCouncil = new ModuleCouncil();
 
-// CONTINÚA CON EL RESTO DE TU CÓDIGO EXISTENTE DESDE AQUÍ...
-// (Todo tu código actual de Database, EnhancedCache, RateLimiter, etc.)
-
 // ==================== BASE DE DATOS SQLite ====================
 class Database {
     constructor() {
@@ -2280,7 +2773,6 @@ class QueryAnalyzer {
                 /(población|habitantes|área)\s+/i,
                 /(ciencia|tecnología|matemática|física)\s+/i
             ],
-            // Nuevos patrones para psicología y filosofía
             psychology: [
                 /(ansiedad|depresión|estres|autoestima|trauma|psicolog|mente|emocion)/i,
                 /(sentir|emocional|preocupado|triste|nervioso|confundido)/i,
@@ -3406,6 +3898,7 @@ const userProfileManager = new UserProfileManager();
 const goalManager = new GoalManager(userProfileManager);
 const mentalHealthResources = new MentalHealthResources();
 const researchAPI = new ResearchAPIIntegration();
+const emotionalAnalyzer = new EmotionalAnalyzer();
 
 // ==================== MANEJADOR PRINCIPAL MEJORADO ====================
 class MessageHandler {
@@ -3456,27 +3949,32 @@ class MessageHandler {
                 return;
             }
             
+            // Análisis emocional humanizado
+            const emotionalState = emotionalAnalyzer.analyze(userMessage);
+            logger.debug('Análisis emocional humano', { 
+                emocion: emotionalState.humanReadable,
+                intensidad: emotionalState.intensity,
+                matiz: emotionalState.nuance,
+                requiereAtencion: emotionalState.requiresCare,
+                esCrisis: emotionalState.isCrisis
+            });
+            
             const analysis = QueryAnalyzer.analyze(userMessage);
             logger.debug('Análisis de consulta', analysis);
             
             // ============ DETECCIÓN DE TEMAS SENSIBLES (VERSIÓN SUAVE) ============
-            if (analysis.isPsychological) {
+            if (analysis.isPsychological || emotionalState.requiresCare) {
                 const crisisWords = ['suicidio', 'matarme', 'no quiero vivir', 'acabar con todo', 'autolesión'];
                 const hasCrisisWords = crisisWords.some(word => userMessage.toLowerCase().includes(word));
                 
-                if (hasCrisisWords) {
-                    // Versión suave: reconoce pero no insiste en derivar
+                if (hasCrisisWords || emotionalState.isCrisis) {
                     logger.info('Tema sensible detectado, manejando con cuidado', { userId });
                     
-                    // Solo registrar internamente, no interrumpir el flujo
                     await userProfileManager.recordInteraction(userId, {
                         topics: ['tema_sensible'],
                         crisis_detected: true,
                         source: 'psychology'
                     });
-                    
-                    // Continuar con el flujo normal - Mancy responderá con empatía natural
-                    // No interrumpimos con mensaje de crisis
                 }
             }
             
@@ -3501,7 +3999,6 @@ class MessageHandler {
                     recommendations: councilAnalysis.councilRecommendations?.length || 0
                 });
                 
-                // Versión suave: registrar pero no interrumpir
                 const criticalRecommendations = councilAnalysis.councilRecommendations?.filter(
                     rec => rec.priority === 'critical'
                 ) || [];
@@ -3509,7 +4006,6 @@ class MessageHandler {
                 for (const recommendation of criticalRecommendations) {
                     if (recommendation.suggestedAction === 'suggest_professional_help') {
                         logger.info('Tema sensible detectado por el concilio, continuando con conversación normal', { userId });
-                        // Solo registrar, no interrumpir
                         await userProfileManager.recordInteraction(userId, {
                             topics: ['tema_sensible'],
                             crisis_detected: true,
@@ -3538,20 +4034,28 @@ class MessageHandler {
             
             // ============ REGISTRAR INTERACCIÓN EN PERFIL ============
             if (userProfileManager.initialized) {
-                const sentiment = this.analyzeSentiment(userMessage);
-                
                 await userProfileManager.recordInteraction(userId, {
                     topics: analysis.isPsychological ? ['psicología'] : analysis.isPhilosophical ? ['filosofía'] : [],
                     source: analysis.isPsychological ? 'psychology' : analysis.isPhilosophical ? 'philosophy' : 'general',
-                    sentiment: sentiment,
+                    sentiment: {
+                        score: emotionalState.intensity === 'high' ? 0.8 : emotionalState.intensity === 'low' ? 0.2 : 0.5,
+                        label: emotionalState.primary,
+                        confidence: 0.8
+                    },
                     depth: councilAnalysis?.priorityLevel || 'low',
                     message_hash: createHash('md5').update(userMessage).digest('hex')
                 });
             }
             
+            // Si es crisis, añadir una nota sutil
+            let enhancedMessage = userMessage;
+            if (emotionalState.isCrisis) {
+                enhancedMessage = userMessage + " [Nota interna: manejar con especial cuidado y empatía]";
+            }
+            
             const response = await responseGenerator.generate(
                 userId,
-                userMessage,
+                enhancedMessage,
                 {
                     externalInfo,
                     queryAnalysis: analysis,
@@ -3594,7 +4098,8 @@ class MessageHandler {
                 hasExternalInfo: !!externalInfo,
                 councilAnalysis: !!councilAnalysis,
                 councilPriority: councilAnalysis?.priorityLevel,
-                hasPersonalizedInfo: !!personalizedInfo
+                hasPersonalizedInfo: !!personalizedInfo,
+                emocionDetectada: emotionalState.humanReadable
             });
             
             logger.metric('message_processed', totalTime, {
@@ -3603,7 +4108,8 @@ class MessageHandler {
                 withExternalInfo: !!externalInfo,
                 withCouncilAnalysis: !!councilAnalysis,
                 withPersonalizedInfo: !!personalizedInfo,
-                councilPriority: councilAnalysis?.priorityLevel || 'none'
+                councilPriority: councilAnalysis?.priorityLevel || 'none',
+                emocion: emotionalState.primary
             });
             
         } catch (error) {
@@ -3632,29 +4138,6 @@ class MessageHandler {
         } finally {
             rateLimiter.releaseToken();
         }
-    }
-
-    static analyzeSentiment(text) {
-        const positiveWords = ['bien', 'bueno', 'feliz', 'alegre', 'genial', 'excelente', 'gracias'];
-        const negativeWords = ['mal', 'triste', 'deprimido', 'ansioso', 'preocupado', 'horrible', 'terrible'];
-        
-        const words = text.toLowerCase().split(/\s+/);
-        let score = 0;
-        
-        words.forEach(word => {
-            if (positiveWords.includes(word)) score += 0.2;
-            if (negativeWords.includes(word)) score -= 0.2;
-        });
-        
-        let label = 'neutral';
-        if (score > 0.3) label = 'positive';
-        else if (score < -0.3) label = 'negative';
-        
-        return {
-            score: Math.max(-1, Math.min(1, score)),
-            label,
-            confidence: 0.7
-        };
     }
 
     static async handleMention(message) {
@@ -3930,6 +4413,7 @@ class MessageHandler {
                     groqKey: process.env.GROQ_API_KEY ? '✅ Presente' : '❌ FALTANTE',
                     database: database.initialized ? '✅ Inicializada' : '❌ No inicializada',
                     userProfile: userProfileManager.initialized ? '✅ Inicializado' : '❌ No inicializado',
+                    emotionalAnalyzer: '✅ Activo',
                     rateLimiter: {
                         concurrent: rateLimiter.concurrentRequests,
                         userBuckets: rateLimiter.userBuckets.size,
@@ -3994,7 +4478,7 @@ class MessageHandler {
         if (/test|probar|prueba/i.test(content)) {
             const groqOk = await testGroqConnection();
             await message.reply({
-                content: `🧪 **Test de conexión**:\nGroq API: ${groqOk ? '✅ Conectado' : '❌ Falló'}\nDatabase: ${database.initialized ? '✅ OK' : '❌ Falló'}\nPerfiles: ${userProfileManager.initialized ? '✅ OK' : '❌ No inicializado'}\nConcilio: ${moduleCouncil ? '✅ Inicializado' : '❌ No inicializado'}`,
+                content: `🧪 **Test de conexión**:\nGroq API: ${groqOk ? '✅ Conectado' : '❌ Falló'}\nDatabase: ${database.initialized ? '✅ OK' : '❌ Falló'}\nPerfiles: ${userProfileManager.initialized ? '✅ OK' : '❌ No inicializado'}\nConcilio: ${moduleCouncil ? '✅ Inicializado' : '❌ No inicializado'}\nEmotionalAnalyzer: ${emotionalAnalyzer ? '✅ Activo' : '❌ No inicializado'}`,
                 allowedMentions: { repliedUser: false }
             });
             return;
@@ -4007,7 +4491,7 @@ class MessageHandler {
                 .setDescription('Chica Gato Seria con conocimiento psicológico y filosófico')
                 .addFields(
                     { name: '¿Cómo usar?', value: '1. Mencioname (@Mancy)\n2. Responde (haz reply) a mis mensajes para conversar\n3. ¡Listo!' },
-                    { name: '¿Qué puedo hacer?', value: '• Responder preguntas generales\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Análisis psicológico informativo\n• Reflexión filosófica\n• Integración interdisciplinaria' },
+                    { name: '¿Qué puedo hacer?', value: '• Responder preguntas generales\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Análisis psicológico informativo\n• Reflexión filosófica\n• Integración interdisciplinaria\n• Comprensión emocional avanzada' },
                     { name: 'Comandos del Concilio', value: '`@Mancy concilio` - Estado del sistema\n`@Mancy activar psicología` - Activar módulo\n`@Mancy desactivar filosofía` - Desactivar módulo\n`@Mancy reset concilio` - Reiniciar sistema' },
                     { name: 'Comandos de perfil', value: '`@Mancy perfil` - Ver tu perfil\n`@Mancy config profundidad [básica|media|profunda]` - Configurar profundidad\n`@Mancy config estilo [empático|analítico|socrático|poético]` - Configurar estilo\n`@Mancy meta: [descripción]` - Crear meta\n`@Mancy recordatorio: [descripción]` - Crear recordatorio\n`@Mancy investigación [tema]` - Buscar papers\n`@Mancy borrar mis datos` - Eliminar tus datos' },
                     { name: 'Comandos generales', value: '`@Mancy help` - Esta ayuda\n`@Mancy reset` - Reiniciar conversación\n`@Mancy stats` - Ver estadísticas\n`@Mancy diag` - Diagnóstico del sistema\n`@Mancy fix` - Reparar estado' }
@@ -4108,6 +4592,11 @@ client.once('ready', async () => {
             version: councilStatus.version
         });
         
+        logger.info('EmotionalAnalyzer inicializado', {
+            patronesEmocionales: Object.keys(emotionalAnalyzer.emotionalPatterns).length,
+            indicadoresCrisis: emotionalAnalyzer.crisisIndicators.length
+        });
+        
         logger.info(`${CONFIG.BOT_NAME} ${CONFIG.BOT_VERSION} conectada`, {
             tag: client.user.tag,
             id: client.user.id,
@@ -4116,6 +4605,7 @@ client.once('ready', async () => {
             psychologyModule: CONFIG.PSYCHOLOGY_MODULE_ENABLED ? '✅ Activado' : '❌ Desactivado',
             philosophyModule: CONFIG.PHILOSOPHY_MODULE_ENABLED ? '✅ Activado' : '❌ Desactivado',
             userProfiles: userProfileManager.initialized ? '✅ Activado' : '❌ Desactivado',
+            emotionalAnalyzer: '✅ Activado',
             readyAt: new Date().toISOString()
         });
         
