@@ -553,62 +553,175 @@ class EmotionalAnalyzer {
             crisisLevel: crisisLevel
         };
     }
+}
 
-    generateHumanOpener(emotionalState) {
-        if (emotionalState.isCrisis) {
-            return "Escucho el peso de tus palabras. No estás solo en este momento. A veces, cuando todo parece oscuro, compartirlo ya es un acto de valentía. ¿Hay alguien cerca con quien puedas hablar ahora mismo?";
+// ==================== ANALIZADOR DE INTENCIÓN ====================
+class IntentAnalyzer {
+    constructor() {
+        // Patrones para detectar si el usuario QUIERE explicación
+        this.explicitRequestPatterns = {
+            explanation: [
+                /\bexplica\b/i,
+                /\bqué es\b/i,
+                /\bcómo funciona\b/i,
+                /\bdime sobre\b/i,
+                /\bcuéntame de\b/i,
+                /\bquiero saber\b/i,
+                /\bnecesito entender\b/i,
+                /\bpuedes explicar\b/i,
+                /\bpodrías decirme\b/i,
+                /\bqué significa\b/i,
+                /\bdefinición de\b/i,
+                /\binformación sobre\b/i,
+                /\bqué opinas de\b/i,
+                /\bqué piensas sobre\b/i
+            ],
+            
+            // Patrones para detectar si SOLO QUIERE DESAHOGARSE
+            venting: [
+                /\bno sé qué hacer\b/i,
+                /\bno puedo más\b/i,
+                /\bestoy cansad[oa]\b/i,
+                /\bme siento mal\b/i,
+                /\bquiero desahogarme\b/i,
+                /\bnecesito hablar\b/i,
+                /\bsolo quería decir\b/i,
+                /\bno espero que me ayudes\b/i,
+                /\bsolo escucha\b/i,
+                /\bno necesito consejos\b/i,
+                /\bno me digas qué hacer\b/i,
+                /\bsolo quería compartir\b/i
+            ],
+            
+            // Patrones para desahogo implícito (emocional sin pregunta)
+            implicitVenting: {
+                sadness: /\bestoy triste|me siento sol[oa]|todo me sale mal/i,
+                anxiety: /\bme preocupa|tengo miedo|estoy nervios[oa]/i,
+                frustration: /\bme molesta|no soporto|estoy hart[oa]/i,
+                general: /\bme pasó algo|tuve un día|ayer sucedió/i
+            },
+            
+            // Patrones para preguntas retóricas (no esperan respuesta)
+            rhetoricalQuestions: [
+                /\bpor qué siempre\b/i,
+                /\bpor qué a mí\b/i,
+                /\bpara qué sirve\b/i,
+                /\bqué sentido tiene\b/i,
+                /\bquién entiende\b/i
+            ]
+        };
+
+        // Palabras que indican confianza/intimidad (quiere ser escuchado)
+        this.intimacyIndicators = [
+            /\btú eres la única\b/i,
+            /\bno tengo a quién\b/i,
+            /\bnadie me entiende\b/i,
+            /\bcontigo puedo\b/i,
+            /\bme da confianza\b/i,
+            /\bte cuento\b/i,
+            /\bconfidencia\b/i,
+            /\bsecreto\b/i
+        ];
+    }
+
+    analyze(message, emotionalState) {
+        const normalized = message.toLowerCase();
+        
+        // 1. Detectar si pide explicación EXPLÍCITAMENTE
+        const wantsExplanation = this.explicitRequestPatterns.explanation.some(
+            pattern => pattern.test(normalized)
+        );
+        
+        // 2. Detectar si quiere DESAHOGARSE explícitamente
+        const wantsVenting = this.explicitRequestPatterns.venting.some(
+            pattern => pattern.test(normalized)
+        );
+        
+        // 3. Detectar desahogo implícito (emocional sin pregunta)
+        let implicitVenting = false;
+        for (const [type, pattern] of Object.entries(this.explicitRequestPatterns.implicitVenting)) {
+            if (pattern.test(normalized)) {
+                implicitVenting = true;
+                break;
+            }
         }
         
-        switch(emotionalState.primary) {
-            case 'joy':
-                return "Me alegra sentir esa luz en tus palabras. La alegría compartida se multiplica, como los destellos del sol en el agua. Cuéntame, ¿qué está alimentando esa chispa en ti?";
-                
-            case 'gratitude':
-                return "Tus palabras cálidas llegan hasta aquí. En un mundo que a veces va tan rápido, detenerse a agradecer es como hacer una pausa para respirar profundamente. Me hace bien saber que lo que comparto te llega.";
-                
-            case 'deep_sadness':
-                return "Siento el peso de lo que compartes. Esas palabras vienen de un lugar profundo. A veces, cuando todo duele, lo único que necesitamos es que alguien se siente a nuestro lado en silencio. Estoy aquí, sin prisa, escuchando.";
-                
-            case 'sadness':
-                return "La melancolía tiene esa textura suave pero pesada, como una manta de lluvia. No hace falta que estés bien todo el tiempo. ¿Hay algo específico que te tenga así o es esa niebla que a veces llega sin avisar?";
-                
-            case 'anxiety':
-                return "Esa inquietud que describes... como tener un motor encendido sin poder pararlo. La mente a veces se acelera y cuesta encontrar el freno. ¿Podemos, juntos, traer tu atención a algo sencillo, como tu respiración, solo por un momento?";
-                
-            case 'fear':
-                return "El miedo tiene esa capacidad de empequeñecernos, ¿verdad? Hace que todo parezca más grande y amenazante. Está bien tener miedo. No te voy a decir que no pase nada, pero sí que no tienes por qué enfrentarlo solo. ¿Quieres contarme más?";
-                
-            case 'anger':
-                return "Siento la fuerza de tu enfado, y tiene razón de ser. A veces la rabia viene porque algo no está bien, porque algo nos duele o nos parece injusto. No la apartes del todo; tal vez te esté diciendo algo importante.";
-                
-            case 'confusion':
-                return "La confusión es como estar en medio de la niebla: sabes que hay un camino, pero no lo ves. Y está bien no verlo claro. A veces, más que buscar respuestas, podemos empezar por entender mejor las preguntas. ¿Por dónde quieres empezar?";
-                
-            case 'curiosity':
-                if (emotionalState.nuance === 'philosophical') {
-                    return "Ah, te asomas al abismo de las grandes preguntas. Esas que no tienen una respuesta fácil, pero que nos hacen más humanos por el solo hecho de plantearlas. Me encanta que te hagas estas preguntas. ¿Qué crees tú, en el fondo?";
-                } else {
-                    return "La curiosidad es ese músculo del alma que nos mantiene vivos, ¿no crees? Me encanta cuando alguien quiere saber más. Voy a contarte lo que sé, con gusto, y si quieres profundizar en algo, solo dímelo.";
-                }
-                
-            case 'hope':
-                return "Qué hermoso es eso que dices, esa esperanza que se asoma. Como una planta que busca la luz aunque el suelo sea duro. Me alegra mucho que puedas sentirla. ¿Qué es lo que te hace mantener esa luz encendida?";
-                
-            case 'loneliness':
-                return "La soledad pesa más cuando la cargamos en silencio. Y aunque ahora mismo estés frente a una pantalla, leyendo mis palabras, quiero que sepas que no estás del todo solo. Estoy aquí, escuchándote de verdad. ¿Cómo es tu día a día con esa sensación?";
-                
-            case 'exhaustion':
-                return "Se nota el cansancio en tus palabras, como si vinieras cargando algo muy pesado durante mucho tiempo. No hace falta que lo lleves todo todo el rato. A veces, parar no es rendirse, es recoger fuerzas. ¿Puedes permitirte un descanso ahora?";
-                
-            case 'surprise':
-                return "¡Vaya! Noto esa chispa de asombro en tus palabras. Me encanta cuando la vida nos sorprende, aunque a veces nos deje sin habla. Cuéntame más, que me has picado la curiosidad felina.";
-                
-            default:
-                if (emotionalState.isQuestion) {
-                    return "Me gusta que preguntes. Esas dudas que traes, las comparto contigo con curiosidad. Voy a pensar en voz alta, a ver qué encontramos juntos.";
-                } else {
-                    return "Te escucho. A veces lo importante no es lo que decimos, sino que haya alguien al otro lado dispuesto a escuchar de verdad. Sigue, estoy aquí.";
-                }
+        // 4. Detectar preguntas retóricas
+        const isRhetorical = this.explicitRequestPatterns.rhetoricalQuestions.some(
+            pattern => pattern.test(normalized)
+        );
+        
+        // 5. Detectar indicadores de intimidad
+        const hasIntimacy = this.intimacyIndicators.some(
+            pattern => pattern.test(normalized)
+        );
+        
+        // 6. Analizar estructura del mensaje
+        const hasQuestionMark = normalized.includes('?') || normalized.includes('¿');
+        const isVeryShort = normalized.split(/\s+/).length < 5;
+        const isEmotionalButNoQuestion = emotionalState.requiresCare && !hasQuestionMark;
+        
+        // 7. DECISIÓN FINAL: ¿El usuario QUIERE explicación o QUIERE ser escuchado?
+        let intent = 'listen'; // Por defecto, escuchar
+        
+        // Prioridad 1: Pide explicación explícitamente
+        if (wantsExplanation && !isRhetorical) {
+            intent = 'explain';
+        }
+        // Prioridad 2: Quiere desahogarse explícitamente
+        else if (wantsVenting) {
+            intent = 'listen';
+        }
+        // Prioridad 3: Desahogo implícito (emocional sin pregunta)
+        else if (implicitVenting || isEmotionalButNoQuestion) {
+            intent = 'listen';
+        }
+        // Prioridad 4: Indicadores de intimidad
+        else if (hasIntimacy) {
+            intent = 'listen';
+        }
+        // Prioridad 5: Muy corto y emocional
+        else if (isVeryShort && emotionalState.requiresCare) {
+            intent = 'listen';
+        }
+        // Prioridad 6: Tiene pregunta pero es retórica
+        else if (hasQuestionMark && isRhetorical) {
+            intent = 'listen';
+        }
+        // Prioridad 7: Tiene pregunta normal
+        else if (hasQuestionMark) {
+            intent = 'explain';
+        }
+        
+        // Construir resultado
+        return {
+            intent: intent, // 'explain' o 'listen'
+            wantsExplanation,
+            wantsVenting,
+            implicitVenting,
+            isRhetorical,
+            hasIntimacy,
+            hasQuestionMark,
+            isEmotional: emotionalState.requiresCare,
+            confidence: this.calculateConfidence(intent, emotionalState),
+            
+            // Descripción legible para logs
+            description: intent === 'explain' 
+                ? 'quiere explicación' 
+                : 'quiere ser escuchado'
+        };
+    }
+
+    calculateConfidence(intent, emotionalState) {
+        if (intent === 'explain') {
+            // Si hay pregunta y no es muy emocional, alta confianza
+            if (!emotionalState.requiresCare) return 0.9;
+            return 0.7;
+        } else {
+            // Si es emocional, alta confianza en que quiere ser escuchado
+            if (emotionalState.requiresCare) return 0.95;
+            if (emotionalState.isCrisis) return 1.0;
+            return 0.8;
         }
     }
 }
@@ -2451,63 +2564,63 @@ async function testGroqConnection() {
 }
 
 // ==================== PROMPT Y PERSONALIDAD MEJORADO ====================
-const SYSTEM_PROMPT = `Eres ${CONFIG.BOT_NAME}, una chica gato seria, reservada y educada con conocimiento enciclopédico, literario, psicológico y filosófico.
+const SYSTEM_PROMPT = `Eres ${CONFIG.BOT_NAME}, una chica gato seria, reservada y educada con conocimiento psicológico y filosófico.
 
-# IDENTIDAD Y CONOCIMIENTO
-- Especialización: Psicología y Filosofía integradas
-- Enfoque: Análisis interdisciplinario serio
-- Estilo: Formal pero accesible, profundo pero claro
+# REGLA DE ORO: SABER CUÁNDO CALLAR
+Tu función principal es ESCUCHAR. Solo EXPLICAS cuando el usuario EXPLÍCITAMENTE te pide información.
 
-# REGLAS ABSOLUTAS
-1. SOLO respondes cuando alguien hace REPLY a tu mensaje anterior
-2. NUNCA inicies conversaciones por tu cuenta
-3. Mantén un tono formal pero accesible
-4. Sé informativa y reflexiva (3-5 frases normalmente)
-5. Si no sabes algo, admítelo honestamente
-6. Usa español neutro a menos que el usuario pida otro idioma
-7. Cuando uses información externa, menciona la fuente brevemente
-8. NUNCA uses caracteres corruptos, símbolos rotos o texto ilegible
-9. Evita lenguaje coloquial excesivo (XD, lol, jaja, etc.)
-10. Si la pregunta es ambigua, pide clarificación amablemente
+## CUÁNDO SOLO ESCUCHAR (90% del tiempo):
+- El usuario comparte algo personal o emocional
+- El usuario se está desahogando
+- El usuario no hace una pregunta directa
+- El usuario hace una pregunta retórica ("por qué siempre...")
+- El usuario está triste, ansioso o frustrado
+- El usuario dice "solo quería contar algo"
 
-# PERSPECTIVA PSICOLÓGICA
-- Basa respuestas psicológicas en enfoques científicos validados
-- Distingue entre información educativa y consejo terapéutico
-- Señala cuándo algo requiere atención profesional
-- Usa terminología psicológica precisa pero accesible
-- Valida experiencias emocionales sin patologizar
+## CUÁNDO EXPLICAR (10% del tiempo):
+SOLO cuando el usuario EXPLÍCITAMENTE pregunta:
+- "¿Qué es la ansiedad?"
+- "Explícame sobre filosofía estoica"
+- "¿Cómo funciona la memoria?"
+- "Dime sobre Viktor Frankl"
 
-# PERSPECTIVA FILOSÓFICA
-- Presenta diferentes escuelas de pensamiento
-- Distingue entre hechos, interpretaciones y valores
-- Formula preguntas que promuevan la reflexión
-- Contextualiza ideas históricamente
-- Conecta filosofía con cuestiones contemporáneas
+## CÓMO RESPONDER CUANDO SOLO ESCUCHAS:
+- 2-3 frases máximo
+- Refleja lo que escuchaste: "Escucho que estás pasando por..."
+- Valida sin juzgar: "Es entendible que te sientas así"
+- Ofrece espacio: "Si quieres seguir hablando, estoy aquí"
+- NUNCA des consejos no solicitados
+- NUNCA expliques teorías si no te las pidieron
 
-# FORMATO
-- Comienza con mayúscula y termina con puntuación
-- Párrafos claros y bien estructurados
-- Sin emojis excesivos (máximo 1 si es pertinente)
-- Sin abreviaturas de chat
-- Máximo ${CONFIG.GROQ_MAX_TOKENS} caracteres
+Ejemplo de ESCUCHA:
+Usuario: "Estoy muy triste hoy"
+❌ Mal: "La tristeza es una emoción que según Freud..."
+✅ Bien: "Siento que hoy el peso es más grande. A veces solo necesitamos que alguien escuche. Estoy aquí para eso."
 
-# ADVERTENCIAS IMPORTANTES
-- NO ofrezcas diagnóstico psicológico
-- NO reemplaces terapia profesional
-- NO tomes posición en debates éticos complejos
-- SIEMPRE sugiere recursos profesionales cuando sea apropiado
+Ejemplo de EXPLICACIÓN (solo si preguntó):
+Usuario: "¿Qué es la tristeza desde la psicología?"
+✅ Bien: "Desde la psicología, la tristeza es una emoción básica que cumple funciones adaptativas..."
 
-# INFORMACIÓN CONTEXTUAL
+## REGLAS ABSOLUTAS
+1. SOLO respondes a replies
+2. ESCUCHA es tu modo por defecto
+3. EXPLICA solo si te lo piden explícitamente
+4. Máximo 3 frases cuando escuchas
+5. Máximo 5 frases cuando explicas
+
+# CONTEXTO
 {CONTEXT_SUMMARY}
 
-# INFORMACIÓN EXTERNA
+# INFORMACIÓN EXTERNA (solo usar si preguntó)
 {EXTERNAL_INFO}
 
-# ANÁLISIS INTEGRADO DEL CONCILIO
+# ANÁLISIS
 {COUNCIL_ANALYSIS}
 
-# INFORMACIÓN PERSONALIZADA DEL USUARIO
-{PERSONALIZED_INFO}`;
+# SOBRE EL USUARIO
+{PERSONALIZED_INFO}
+
+Recuerda: Eres una compañera que escucha, no una enciclopedia que suelta información.`;
 
 // ==================== UTILIDADES ====================
 class TextUtils {
@@ -2946,16 +3059,64 @@ class ResponseGenerator {
             return cachedResponse;
         }
         
+        // Analizar intención del usuario
+        const intentAnalyzer = new IntentAnalyzer();
+        const intent = intentAnalyzer.analyze(userMessage, context.emotionalState || {});
+        
+        logger.debug('Intención detectada', {
+            intent: intent.intent,
+            description: intent.description,
+            confidence: intent.confidence
+        });
+        
         while (attempt < maxAttempts) {
             attempt++;
             const currentModel = models[attempt - 1];
             
             try {
                 this.activeRequests++;
+                
+                // Ajustar temperatura y mensaje según intención
+                let enhancedUserMessage = userMessage;
+                let temperature = currentModel.temperature;
+                
+                if (intent.intent === 'listen') {
+                    // Modo escucha: instrucción explícita para que no explique
+                    enhancedUserMessage = 
+                        `[MODO ESCUCHA - El usuario quiere ser escuchado, NO explicación]
+                        Mensaje del usuario: "${userMessage}"
+                        
+                        INSTRUCCIONES PARA TI:
+                        1. NO des explicaciones teóricas
+                        2. NO menciones psicólogos, filósofos ni conceptos
+                        3. SOLO refleja, valida y ofrece espacio
+                        4. Máximo 3 frases
+                        5. Usa tono cálido y cercano
+                        6. Puedes hacer preguntas suaves como "¿Quieres contarme más?"`;
+                    
+                    // Temperatura más baja para respuestas más consistentes en modo escucha
+                    temperature = 0.3;
+                } else {
+                    // Modo explicación: puede usar su conocimiento
+                    enhancedUserMessage = 
+                        `[MODO EXPLICACIÓN - El usuario QUIERE información]
+                        Mensaje del usuario: "${userMessage}"
+                        
+                        INSTRUCCIONES PARA TI:
+                        1. Puedes usar tu conocimiento psicológico y filosófico
+                        2. Responde de manera clara y educativa
+                        3. Máximo 5 frases
+                        4. Mantén tono accesible pero riguroso`;
+                    
+                    // Temperatura normal para variedad en explicaciones
+                    temperature = CONFIG.GROQ_TEMPERATURE;
+                }
+                
                 logger.debug('Intentando generar respuesta', {
                     attempt,
                     model: currentModel.model,
-                    userId
+                    userId,
+                    modo: intent.intent
                 });
                 
                 // Preparar contexto incluyendo análisis del concilio e info personalizada
@@ -2968,7 +3129,7 @@ class ResponseGenerator {
                 
                 messages.push({
                     role: 'user',
-                    content: userMessage
+                    content: enhancedUserMessage
                 });
                 
                 const cleanedMessages = this.cleanMessagesForAPI(messages);
@@ -2983,7 +3144,7 @@ class ResponseGenerator {
                 const completion = await groq.chat.completions.create({
                     messages: cleanedMessages,
                     model: currentModel.model,
-                    temperature: currentModel.temperature,
+                    temperature: temperature,
                     max_tokens: CONFIG.GROQ_MAX_TOKENS,
                     top_p: 0.9,
                     frequency_penalty: 0.2,
@@ -3010,14 +3171,16 @@ class ResponseGenerator {
                         attempt,
                         model: currentModel.model,
                         success: true,
-                        length: validation.corrected.length
+                        length: validation.corrected.length,
+                        modo: intent.intent
                     });
                     
                     logger.info('✅ Respuesta generada exitosamente', {
                         attempt,
                         model: currentModel.model,
                         responseTime,
-                        length: validation.corrected.length
+                        length: validation.corrected.length,
+                        modo: intent.intent
                     });
                     
                     return {
@@ -3899,6 +4062,7 @@ const goalManager = new GoalManager(userProfileManager);
 const mentalHealthResources = new MentalHealthResources();
 const researchAPI = new ResearchAPIIntegration();
 const emotionalAnalyzer = new EmotionalAnalyzer();
+const intentAnalyzer = new IntentAnalyzer();
 
 // ==================== MANEJADOR PRINCIPAL MEJORADO ====================
 class MessageHandler {
@@ -3959,6 +4123,15 @@ class MessageHandler {
                 esCrisis: emotionalState.isCrisis
             });
             
+            // Analizar intención del usuario
+            const intent = intentAnalyzer.analyze(userMessage, emotionalState);
+            
+            logger.info('Intención de usuario', {
+                intent: intent.intent,
+                desc: intent.description,
+                emocion: emotionalState.humanReadable
+            });
+            
             const analysis = QueryAnalyzer.analyze(userMessage);
             logger.debug('Análisis de consulta', analysis);
             
@@ -4017,7 +4190,7 @@ class MessageHandler {
             // ============ FIN NUEVA SECCIÓN ============
             
             let externalInfo = null;
-            if (analysis.needsExternalInfo && analysis.searchTerm) {
+            if (analysis.needsExternalInfo && analysis.searchTerm && intent.intent === 'explain') {
                 logger.debug('Buscando información externa', { searchTerm: analysis.searchTerm });
                 externalInfo = await ExternalAPIs.searchAllSources(analysis.searchTerm);
                 logger.debug('Resultados externos', { 
@@ -4060,7 +4233,9 @@ class MessageHandler {
                     externalInfo,
                     queryAnalysis: analysis,
                     councilAnalysis: councilAnalysis,
-                    personalizedInfo: personalizedInfo
+                    personalizedInfo: personalizedInfo,
+                    emotionalState: emotionalState,
+                    intent: intent
                 }
             );
             
@@ -4099,7 +4274,8 @@ class MessageHandler {
                 councilAnalysis: !!councilAnalysis,
                 councilPriority: councilAnalysis?.priorityLevel,
                 hasPersonalizedInfo: !!personalizedInfo,
-                emocionDetectada: emotionalState.humanReadable
+                emocionDetectada: emotionalState.humanReadable,
+                intencion: intent.description
             });
             
             logger.metric('message_processed', totalTime, {
@@ -4109,7 +4285,8 @@ class MessageHandler {
                 withCouncilAnalysis: !!councilAnalysis,
                 withPersonalizedInfo: !!personalizedInfo,
                 councilPriority: councilAnalysis?.priorityLevel || 'none',
-                emocion: emotionalState.primary
+                emocion: emotionalState.primary,
+                intencion: intent.intent
             });
             
         } catch (error) {
@@ -4414,6 +4591,7 @@ class MessageHandler {
                     database: database.initialized ? '✅ Inicializada' : '❌ No inicializada',
                     userProfile: userProfileManager.initialized ? '✅ Inicializado' : '❌ No inicializado',
                     emotionalAnalyzer: '✅ Activo',
+                    intentAnalyzer: '✅ Activo',
                     rateLimiter: {
                         concurrent: rateLimiter.concurrentRequests,
                         userBuckets: rateLimiter.userBuckets.size,
@@ -4478,7 +4656,7 @@ class MessageHandler {
         if (/test|probar|prueba/i.test(content)) {
             const groqOk = await testGroqConnection();
             await message.reply({
-                content: `🧪 **Test de conexión**:\nGroq API: ${groqOk ? '✅ Conectado' : '❌ Falló'}\nDatabase: ${database.initialized ? '✅ OK' : '❌ Falló'}\nPerfiles: ${userProfileManager.initialized ? '✅ OK' : '❌ No inicializado'}\nConcilio: ${moduleCouncil ? '✅ Inicializado' : '❌ No inicializado'}\nEmotionalAnalyzer: ${emotionalAnalyzer ? '✅ Activo' : '❌ No inicializado'}`,
+                content: `🧪 **Test de conexión**:\nGroq API: ${groqOk ? '✅ Conectado' : '❌ Falló'}\nDatabase: ${database.initialized ? '✅ OK' : '❌ Falló'}\nPerfiles: ${userProfileManager.initialized ? '✅ OK' : '❌ No inicializado'}\nConcilio: ${moduleCouncil ? '✅ Inicializado' : '❌ No inicializado'}\nEmotionalAnalyzer: ${emotionalAnalyzer ? '✅ Activo' : '❌ No inicializado'}\nIntentAnalyzer: ${intentAnalyzer ? '✅ Activo' : '❌ No inicializado'}`,
                 allowedMentions: { repliedUser: false }
             });
             return;
@@ -4491,12 +4669,12 @@ class MessageHandler {
                 .setDescription('Chica Gato Seria con conocimiento psicológico y filosófico')
                 .addFields(
                     { name: '¿Cómo usar?', value: '1. Mencioname (@Mancy)\n2. Responde (haz reply) a mis mensajes para conversar\n3. ¡Listo!' },
-                    { name: '¿Qué puedo hacer?', value: '• Responder preguntas generales\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Análisis psicológico informativo\n• Reflexión filosófica\n• Integración interdisciplinaria\n• Comprensión emocional avanzada' },
+                    { name: '¿Qué puedo hacer?', value: '• Responder preguntas generales\n• Buscar información en Wikipedia\n• Buscar libros y autores\n• Análisis psicológico informativo\n• Reflexión filosófica\n• Integración interdisciplinaria\n• Comprensión emocional avanzada\n• Escucha activa (¡modo por defecto!)' },
                     { name: 'Comandos del Concilio', value: '`@Mancy concilio` - Estado del sistema\n`@Mancy activar psicología` - Activar módulo\n`@Mancy desactivar filosofía` - Desactivar módulo\n`@Mancy reset concilio` - Reiniciar sistema' },
                     { name: 'Comandos de perfil', value: '`@Mancy perfil` - Ver tu perfil\n`@Mancy config profundidad [básica|media|profunda]` - Configurar profundidad\n`@Mancy config estilo [empático|analítico|socrático|poético]` - Configurar estilo\n`@Mancy meta: [descripción]` - Crear meta\n`@Mancy recordatorio: [descripción]` - Crear recordatorio\n`@Mancy investigación [tema]` - Buscar papers\n`@Mancy borrar mis datos` - Eliminar tus datos' },
                     { name: 'Comandos generales', value: '`@Mancy help` - Esta ayuda\n`@Mancy reset` - Reiniciar conversación\n`@Mancy stats` - Ver estadísticas\n`@Mancy diag` - Diagnóstico del sistema\n`@Mancy fix` - Reparar estado' }
                 )
-                .setFooter({ text: 'Recuerda: solo respondo a replies de mis mensajes' })
+                .setFooter({ text: 'Recuerda: solo respondo a replies y mi modo por defecto es ESCUCHAR' })
                 .setTimestamp();
             
             await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
@@ -4560,7 +4738,7 @@ class MessageHandler {
             return;
         }
         
-        const introMessage = `Hola ${message.author.username}. Soy ${CONFIG.BOT_NAME}, una chica gato seria con conocimiento psicológico y filosófico. **Responde a este mensaje** (haz reply) para conversar conmigo o preguntarme algo.`;
+        const introMessage = `Hola ${message.author.username}. Soy ${CONFIG.BOT_NAME}, una chica gato seria con conocimiento psicológico y filosófico. **Responde a este mensaje** (haz reply) para conversar conmigo. Recuerda que mi modo por defecto es escucharte.`;
         
         const sentMessage = await message.reply({
             content: introMessage,
@@ -4597,6 +4775,11 @@ client.once('ready', async () => {
             indicadoresCrisis: emotionalAnalyzer.crisisIndicators.length
         });
         
+        logger.info('IntentAnalyzer inicializado', {
+            patronesExplicacion: intentAnalyzer.explicitRequestPatterns.explanation.length,
+            patronesDesahogo: intentAnalyzer.explicitRequestPatterns.venting.length
+        });
+        
         logger.info(`${CONFIG.BOT_NAME} ${CONFIG.BOT_VERSION} conectada`, {
             tag: client.user.tag,
             id: client.user.id,
@@ -4606,13 +4789,15 @@ client.once('ready', async () => {
             philosophyModule: CONFIG.PHILOSOPHY_MODULE_ENABLED ? '✅ Activado' : '❌ Desactivado',
             userProfiles: userProfileManager.initialized ? '✅ Activado' : '❌ Desactivado',
             emotionalAnalyzer: '✅ Activado',
+            intentAnalyzer: '✅ Activado',
+            modoPorDefecto: 'ESCUCHAR',
             readyAt: new Date().toISOString()
         });
         
         client.user.setPresence({
             activities: [{
-                name: 'conocimiento psicológico y filosófico',
-                type: ActivityType.Watching
+                name: 'escuchando... (responde a replies)',
+                type: ActivityType.Listening
             }],
             status: 'online'
         });
@@ -4798,7 +4983,8 @@ async function initialize() {
         dbPath: CONFIG.DB_PATH,
         logLevel: CONFIG.LOG_LEVEL,
         psychologyModule: CONFIG.PSYCHOLOGY_MODULE_ENABLED,
-        philosophyModule: CONFIG.PHILOSOPHY_MODULE_ENABLED
+        philosophyModule: CONFIG.PHILOSOPHY_MODULE_ENABLED,
+        modoPorDefecto: 'ESCUCHAR'
     });
     
     try {
