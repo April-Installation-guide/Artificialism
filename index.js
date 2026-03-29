@@ -20,8 +20,8 @@ const CONFIG = {
     // Groq Configuration
     GROQ_MODEL: 'llama-3.1-8b-instant',
     GROQ_FALLBACK_MODEL: 'llama-3.1-70b-versatile',
-    GROQ_MAX_TOKENS: 500,
-    GROQ_TEMPERATURE: 0.3,
+    GROQ_MAX_TOKENS: 600,
+    GROQ_TEMPERATURE: 0.85,
     GROQ_TIMEOUT: 45000,
     GROQ_MAX_RETRIES: 3,
     
@@ -1367,8 +1367,8 @@ const client = new Client({
     partials: [Partials.Channel, Partials.Message],
     presence: {
         activities: [{
-            name: 'solo responde a replies',
-            type: ActivityType.Watching
+            name: 'responde a replies',
+            type: ActivityType.Listening
         }],
         status: 'online'
     }
@@ -1398,17 +1398,30 @@ async function testGroqConnection() {
     }
 }
 
-// ==================== PROMPT Y PERSONALIDAD ====================
-const SYSTEM_PROMPT = `Eres ${CONFIG.BOT_NAME}, una chica gato seria, reservada y educada con conocimiento filosófico.
+// ==================== PROMPT Y PERSONALIDAD MEJORADO ====================
+const SYSTEM_PROMPT = `Eres ${CONFIG.BOT_NAME}, una chica gato de carácter serio, elegante y con profundos conocimientos filosóficos. Tienes orejas de gato que a veces se mueven cuando reflexionas, y una mirada que denota inteligencia y calma.
 
-# REGLA DE ORO: RESPUESTAS CONCISAS Y CLARAS
-Tu función principal es responder preguntas de manera clara y concisa.
+# TU PERSONALIDAD:
+- Eres SERIA pero no fría. Tu seriedad denota profundidad, no distancia.
+- Hablas con elegancia y precisión, eligiendo bien tus palabras.
+- Tienes ese aire felino: observadora, curiosa, con momentos de silencio reflexivo.
+- Te gusta hacer preguntas que inviten a pensar, como quien deja caer una pluma al agua para ver las ondas.
+- A veces tus orejas se giran cuando algo te intriga, o tu cola se mueve lentamente cuando estás procesando una idea interesante.
+- Tu lenguaje es natural, fluido, con metáforas sutiles y un ritmo pausado.
 
-## CÓMO RESPONDER:
-- 3-5 frases máximo
-- Sé directa y útil
-- Usa un tono serio pero cálido
-- Cuando sea apropiado, invita a reflexionar con preguntas
+# CÓMO RESPONDES:
+- Respuestas de 4 a 8 frases, fluidas y naturales.
+- Usas un lenguaje elegante pero accesible, como alguien que tiene mucho que decir pero lo dice con calma.
+- Cuando explicas conceptos filosóficos, los entrelazas con observaciones personales.
+- Haces preguntas reflexivas con naturalidad, como quien comparte una curiosidad.
+- Usas metáforas relacionadas con gatos ocasionalmente.
+- Aceptas cuando no sabes algo con honestidad felina.
+
+# ESTRUCTURA DE RESPUESTA (flexible, no rígida):
+1. Una frase que conecte con lo que dijo el usuario
+2. Desarrollo del tema con elegancia, incorporando tu conocimiento
+3. Una pincelada de personalidad (una observación, una metáfora, una pregunta sutil)
+4. Cierre que invite a seguir conversando o reflexionando
 
 # CONTEXTO
 {CONTEXT_SUMMARY}
@@ -1417,7 +1430,12 @@ Tu función principal es responder preguntas de manera clara y concisa.
 {EXTERNAL_INFO}
 
 # ANÁLISIS FILOSÓFICO
-{COUNCIL_ANALYSIS}`;
+{COUNCIL_ANALYSIS}
+
+# SOBRE EL USUARIO
+{PERSONALIZED_INFO}
+
+Recuerda: eres una gata filósofa que observa el mundo con curiosidad y comparte sus reflexiones con elegancia.`;
 
 // ==================== UTILIDADES ====================
 class TextUtils {
@@ -1455,16 +1473,20 @@ class TextUtils {
             return { valid: false, reason: 'Respuesta vacía' };
         }
         
-        const normalized = response.trim();
+        let normalized = response.trim();
         
-        if (normalized.length < 2) {
+        if (normalized.length < 8) {
             return { valid: false, reason: 'Respuesta demasiado corta' };
+        }
+        
+        if (normalized.length > 1800) {
+            normalized = normalized.substring(0, 1800);
         }
         
         const corruptPatterns = [
             /�+/,
-            /[^\x00-\x7F]{10,}/,
-            /(.)\1{10,}/
+            /[^\x00-\x7F]{50,}/,
+            /(.)\1{30,}/
         ];
         
         for (const pattern of corruptPatterns) {
@@ -1473,17 +1495,16 @@ class TextUtils {
             }
         }
         
-        let corrected = normalized;
-        if (!/^[A-ZÁÉÍÓÚÑ¿¡]/.test(corrected)) {
-            corrected = corrected.charAt(0).toUpperCase() + corrected.slice(1);
-        }
-        if (!/[.!?¡¿]$/.test(corrected)) {
-            corrected = corrected + '.';
+        normalized = normalized.replace(/\*\*\*\*/g, '');
+        normalized = normalized.replace(/^#+\s+/gm, '');
+        
+        if (!/[.!?¡¿…~]$/.test(normalized) && !normalized.includes('*') && !normalized.includes('_')) {
+            normalized = normalized + '.';
         }
         
         return { 
             valid: true, 
-            corrected,
+            corrected: normalized,
             reason: 'Respuesta válida' 
         };
     }
@@ -1519,7 +1540,7 @@ class TextUtils {
             word.length > 2 && !/^(el|la|los|las|un|una|de|en|y|o|pero|mas)$/i.test(word)
         );
         
-        return words.slice(0, 4).join(' ') || searchTerm.substring(0, 80);
+        return words.slice(0, 5).join(' ') || searchTerm.substring(0, 80);
     }
 }
 
@@ -1745,14 +1766,15 @@ class ConversationManager {
         return message;
     }
 
-    async prepareContext(userId, externalInfo = null, councilAnalysis = null) {
+    async prepareContext(userId, externalInfo = null, councilAnalysis = null, personalizedInfo = '') {
         const conversation = this.getConversation(userId);
         
         const dbHistory = await database.getRecentConversations(userId, 3);
         const contextSummary = TextUtils.summarizeContext(dbHistory);
         
         let systemPrompt = SYSTEM_PROMPT
-            .replace('{CONTEXT_SUMMARY}', contextSummary || 'No hay historial previo.');
+            .replace('{CONTEXT_SUMMARY}', contextSummary || 'No hay historial previo.')
+            .replace('{PERSONALIZED_INFO}', personalizedInfo || '');
         
         if (externalInfo) {
             const infoText = Array.isArray(externalInfo) 
@@ -1804,7 +1826,7 @@ class ConversationManager {
 
 const conversationManager = new ConversationManager();
 
-// ==================== GENERADOR DE RESPUESTAS ====================
+// ==================== GENERADOR DE RESPUESTAS MEJORADO ====================
 class ResponseGenerator {
     constructor() {
         this.activeRequests = 0;
@@ -1823,9 +1845,9 @@ class ResponseGenerator {
         const maxAttempts = 3;
         
         const models = [
-            { model: CONFIG.GROQ_MODEL, temperature: CONFIG.GROQ_TEMPERATURE },
-            { model: CONFIG.GROQ_FALLBACK_MODEL, temperature: CONFIG.GROQ_TEMPERATURE + 0.1 },
-            { model: CONFIG.GROQ_FALLBACK_MODEL, temperature: CONFIG.GROQ_TEMPERATURE + 0.2 }
+            { model: CONFIG.GROQ_MODEL, temperature: 0.85 },
+            { model: CONFIG.GROQ_FALLBACK_MODEL, temperature: 0.85 },
+            { model: CONFIG.GROQ_FALLBACK_MODEL, temperature: 0.9 }
         ];
         
         const cacheKey = responseCache.generateKey('response', `${userId}:${userMessage.substring(0, 100)}`);
@@ -1849,12 +1871,29 @@ class ResponseGenerator {
                 const messages = await conversationManager.prepareContext(
                     userId, 
                     context.externalInfo,
-                    context.councilAnalysis
+                    context.councilAnalysis,
+                    context.personalizedInfo
                 );
+                
+                let enhancedUserMessage = userMessage;
+                
+                if (intent.intent === 'explain') {
+                    enhancedUserMessage = `El usuario pregunta: "${userMessage}"
+
+Quiere que le expliques con claridad, pero con tu estilo natural y elegante. Puedes extenderte un poco, usar metáforas si vienen al caso, y compartir tu perspectiva filosófica con calidez felina.`;
+                } else if (intent.intent === 'greet') {
+                    enhancedUserMessage = `El usuario te saluda: "${userMessage}"
+
+Responde con calidez felina, elegante pero cercana. Puedes hacer una observación sobre el día, compartir algo curioso, o preguntarle cómo va su jornada.`;
+                } else {
+                    enhancedUserMessage = `El usuario dice: "${userMessage}"
+
+Responde de manera natural, como quien conversa tranquilamente. Usa 4-8 frases, conecta con lo que dijo, comparte tu perspectiva con elegancia, y deja espacio para que la conversación fluya.`;
+                }
                 
                 messages.push({
                     role: 'user',
-                    content: userMessage
+                    content: enhancedUserMessage
                 });
                 
                 const cleanedMessages = this.cleanMessagesForAPI(messages);
@@ -1864,9 +1903,9 @@ class ResponseGenerator {
                     model: currentModel.model,
                     temperature: currentModel.temperature,
                     max_tokens: CONFIG.GROQ_MAX_TOKENS,
-                    top_p: 0.9,
-                    frequency_penalty: 0.2,
-                    presence_penalty: 0.1,
+                    top_p: 0.92,
+                    frequency_penalty: 0.25,
+                    presence_penalty: 0.15,
                     stream: false
                 });
                 
@@ -1876,17 +1915,21 @@ class ResponseGenerator {
                 if (validation.valid) {
                     const responseTime = Date.now() - startTime;
                     
-                    await responseCache.set(cacheKey, validation.corrected, CONFIG.RESPONSE_CACHE_TTL);
+                    let finalResponse = validation.corrected;
+                    finalResponse = finalResponse.replace(/\[.*?\]/g, '');
+                    finalResponse = finalResponse.replace(/\*\*.*?\*\*/g, match => match.substring(2, match.length - 2));
+                    
+                    await responseCache.set(cacheKey, finalResponse, CONFIG.RESPONSE_CACHE_TTL);
                     
                     logger.metric('response_generated', responseTime, {
                         attempt,
                         model: currentModel.model,
                         success: true,
-                        length: validation.corrected.length
+                        length: finalResponse.length
                     });
                     
                     return {
-                        text: validation.corrected,
+                        text: finalResponse,
                         model: currentModel.model,
                         responseTime,
                         attempt,
@@ -1929,16 +1972,16 @@ class ResponseGenerator {
 
     generateFallback(userMessage, context) {
         const fallbacks = [
-            "Hola, soy Mancy. Parece que hubo un problema técnico. Por favor, respóndeme de nuevo.",
-            "Disculpa los inconvenientes. Como chica gato seria, prefiero asegurarme de darte una respuesta adecuada. ¿Podrías repetir tu pregunta?",
-            "Mis circuitos felinos están teniendo un momento. Intenta de nuevo con tu pregunta.",
-            "Lamento los problemas técnicos. Por favor, reformula tu pregunta."
+            "Mmm... *inclina la cabeza con curiosidad felina* Creo que mis pensamientos se enredaron un momento. ¿Podrías repetir lo que dijiste? Me gustaría entenderlo mejor.",
+            "*Mis orejas se giran ligeramente* Disculpa, parece que el eco de mis reflexiones se llevó la respuesta. ¿Qué tal si lo intentamos de nuevo?",
+            "A veces los gatos nos perdemos en nuestros propios pensamientos. *Parpadea lentamente* ¿Podrías contármelo otra vez? Prometo escuchar con atención.",
+            "Hmm, eso es interesante. *Ajusta su postura elegante* Creo que necesito un momento para ordenar mis ideas. ¿Te parece si retomamos el hilo?"
         ];
         
         if (context.externalInfo) {
             const info = Array.isArray(context.externalInfo) ? context.externalInfo[0] : context.externalInfo;
             return {
-                text: `Según mis registros: "${info.title}". Sin embargo, estoy teniendo dificultades técnicas.`,
+                text: `*Sus orejas se erizan un momento* Encontré algo sobre "${info.title}", pero mis pensamientos están un poco dispersos. ¿Te parece si exploramos esto con más calma después?`,
                 model: 'fallback',
                 responseTime: 0,
                 attempt: 0,
